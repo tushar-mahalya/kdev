@@ -1,0 +1,73 @@
+[project]
+name = "kdev"
+version = "0.1.0"
+description = "A Kaggle notebook as your remote dev box: SSH and VS Code in, files that persist across sessions, accounts and machines."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["kaggle", "ssh", "vscode", "remote-development", "gpu", "cloudflare-tunnel"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+]
+# Floors are the versions kdev is tested against: typer 0.27 is the first
+# with its own exception types, kaggle 2.2 ships the OAuth `auth login` flow
+# and the kagglesdk that token refresh depends on.
+dependencies = [
+    "httpx>=0.27,<1",
+    "kaggle>=2.2,<3",
+    "typer>=0.27,<1",
+    "questionary>=2.0,<3",
+    "rich>=13,<15",
+]
+
+[project.urls]
+Homepage = "https://github.com/tushar-mahalya/kdev"
+Repository = "https://github.com/tushar-mahalya/kdev"
+Issues = "https://github.com/tushar-mahalya/kdev/issues"
+Changelog = "https://github.com/tushar-mahalya/kdev/blob/main/CHANGELOG.md"
+
+[project.scripts]
+kdev = "kdev.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kdev"]
+
+# The source distribution ships the package, its tests and docs -- nothing
+# else that happens to be lying in the working tree.
+[tool.hatch.build.targets.sdist]
+include = ["src/kdev", "tests", "README.md", "LICENSE", "pyproject.toml"]
+
+[dependency-groups]
+# ruff is pinned to the version .pre-commit-config.yaml runs, so a clean
+# `uv run ruff` locally means a clean hook and a clean CI.
+dev = ["pytest>=8", "ruff==0.16.8", "pre-commit>=4"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501", "RUF001", "RUF002", "RUF003"]  # the design glyphs are deliberate

@@ -1,0 +1,87 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: checks (pre-commit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      # The same hooks a commit runs locally; pytest runs in its own job.
+      - run: uv run pre-commit run --all-files --show-diff-on-failure
+        env:
+          SKIP: pytest
+
+  tests:
+    name: tests (py${{ matrix.python }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every supported Python on Linux, plus macOS once: this repo is
+        # private, and macOS minutes count ten times against the free quota.
+        os: [ubuntu-latest]
+        python: ["3.11", "3.12", "3.13"]
+        include:
+          - os: macos-latest
+            python: "3.12"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked
+      - run: uv run pytest
+
+  package:
+    name: package builds and installs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.12"
+      - run: uv build
+      - run: uvx twine check --strict dist/*
+      - name: Installs cleanly and runs
+        run: |
+          uv tool install dist/*.whl
+          kdev --version
+          kdev --help > /dev/null
+          python - <<'PY'
+          import zipfile, glob
+          names = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
+          # Shipped into every Kaggle session: the package is useless without it.
+          assert "kdev/kdev_box.py" in names, names
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  secrets:
+    name: no secrets in history
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,59 @@
+# Runs on every commit (and `pytest` on every push). CI runs the same hooks,
+# so what passes here passes there. Install once per clone:
+#   uv run pre-commit install --install-hooks -t pre-commit -t pre-push
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      # kdev handles OAuth tokens, tunnel credentials and deploy keys; none
+      # of them may ever be committed.
+      - id: detect-private-key
+
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.38.1
+    hooks:
+      # A mistyped key in a workflow fails silently on GitHub; catch it here.
+      - id: check-github-workflows
+      - id: check-dependabot
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: [--baseline, .secrets.baseline]
+        exclude: ^uv\.lock$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.8
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.12.18
+    hooks:
+      # pyproject.toml and uv.lock must never disagree.
+      - id: uv-lock
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: uv run pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
