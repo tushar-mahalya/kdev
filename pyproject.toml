@@ -28,7 +28,7 @@ dependencies = [
     "kaggle>=2.2,<3",
     "typer>=0.27,<1",
     "questionary>=2.0,<3",
-    "rich>=13,<15",
+    "rich>=13,<16",
 ]
 
 [project.urls]
