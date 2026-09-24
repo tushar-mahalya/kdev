@@ -40,7 +40,11 @@ jobs:
       - id: attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: dist/*
+          # Exactly what is published: `dist/*` also matched the .gitignore
+          # that uv build writes there.
+          subject-path: |
+            dist/*.whl
+            dist/*.tar.gz
       # Kept out of dist/: PyPI takes only the wheel and sdist. The release
       # carries it, so the files can be checked without asking GitHub.
       - name: Keep the signed provenance for the release
