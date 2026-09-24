@@ -6,6 +6,13 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-24
+
+### Added
+- kdev is on PyPI: `uv tool install kdev` or `pipx install kdev`. Releases are
+  published by GitHub Actions through Trusted Publishing, with an attestation
+  for each file, so no upload token exists to leak.
+
 ### Changed
 - Works with rich 15.
 
