@@ -6,6 +6,8 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-24
+
 ### Added
 - Each release carries a Sigstore-signed build provenance for its wheel and
   sdist (`kdev_cli-<version>.sigstore.json`), recorded with GitHub so that
