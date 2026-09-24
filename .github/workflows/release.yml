@@ -4,7 +4,8 @@ name: release
 #   git tag v0.1.3 && git push origin v0.1.3
 # It is tested, built once, published to PyPI through Trusted Publishing (no
 # token is stored anywhere: PyPI trusts this workflow in the `pypi`
-# environment), and then released on GitHub with the same wheel and sdist.
+# environment), and then released on GitHub with the same wheel and sdist,
+# plus a Sigstore-signed build-provenance attestation for both.
 
 on:
   push:
@@ -16,6 +17,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # sign the provenance with a short-lived Sigstore certificate
+      attestations: write # record it with GitHub, for `gh attestation verify`
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
@@ -32,10 +37,26 @@ jobs:
       - run: uv run pytest
       - run: uv build
       - run: uvx twine check --strict dist/*
+      - id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+      # Kept out of dist/: PyPI takes only the wheel and sdist. The release
+      # carries it, so the files can be checked without asking GitHub.
+      - name: Keep the signed provenance for the release
+        env:
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          mkdir signed
+          cp "$BUNDLE" "signed/kdev_cli-${GITHUB_REF_NAME#v}.sigstore.json"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist
           path: dist/
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signed
+          path: signed/
 
   pypi:
     needs: build
@@ -64,6 +85,10 @@ jobs:
         with:
           name: dist
           path: dist/
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: signed
+          path: signed/
       - name: Release notes from CHANGELOG.md
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -76,5 +101,7 @@ jobs:
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           body_path: notes.md
-          files: dist/*
+          files: |
+            dist/*
+            signed/*
           fail_on_unmatched_files: true

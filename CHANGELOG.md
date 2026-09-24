@@ -6,6 +6,11 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Each release carries a Sigstore-signed build provenance for its wheel and
+  sdist (`kdev_cli-<version>.sigstore.json`), recorded with GitHub so that
+  `gh attestation verify` can check any copy of the files. SECURITY.md says how.
+
 ## [0.1.3] - 2026-09-24
 
 ### Added
