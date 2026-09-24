@@ -10,8 +10,8 @@
 
 <p align="center">
   <a href="https://github.com/tushar-mahalya/kdev/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/tushar-mahalya/kdev/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://pypi.org/project/kdev-cli/"><img alt="PyPI" src="https://img.shields.io/pypi/v/kdev-cli?color=00b8d4"></a>
-  <img alt="Python 3.11 | 3.12 | 3.13" src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-3776AB?logo=python&logoColor=white">
+  <a href="https://pypi.org/project/kdev-cli/"><img alt="PyPI" src="https://img.shields.io/pypi/v/kdev-cli?logo=pypi&logoColor=white&color=00b8d4"></a>
+  <a href="https://pypi.org/project/kdev-cli/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/kdev-cli?logo=python&logoColor=white&color=3776AB"></a>
   <a href="https://github.com/tushar-mahalya/kdev/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2ea44f"></a>
   <a href="#contributing"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-00b8d4"></a>
 </p>
@@ -148,6 +148,10 @@ queue looks like a queue and not a hang:
 
 ## Install and set up
 
+<a href="https://pypi.org/project/kdev-cli/"><img alt="PyPI" src="https://img.shields.io/pypi/v/kdev-cli?label=pypi%20kdev-cli&logo=pypi&logoColor=white&color=00b8d4"></a>
+<a href="https://pypi.org/project/kdev-cli/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/kdev-cli?logo=python&logoColor=white&color=3776AB"></a>
+<a href="https://github.com/tushar-mahalya/kdev/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/tushar-mahalya/kdev?label=release&logo=github&color=2ea44f"></a>
+
 Needs Python 3.11+, `ssh`, and a Kaggle account in a Kaggle group.
 
 ```bash
@@ -156,8 +160,10 @@ kdev setup
 ```
 
 The package is `kdev-cli` (PyPI does not allow `kdev`); the command it installs
-is `kdev`. Upgrade with `uv tool upgrade kdev-cli`. For what is on `main` but not released
-yet: `uv tool install git+https://github.com/tushar-mahalya/kdev`.
+is `kdev`. Upgrade with `uv tool upgrade kdev-cli`.
+
+To run what is on `main` but not released yet:
+`uv tool install git+https://github.com/tushar-mahalya/kdev`.
 
 `kdev setup` does only what is missing, so it is safe to run again at any
 time. It will:
