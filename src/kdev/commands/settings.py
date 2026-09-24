@@ -19,9 +19,13 @@ app = typer.Typer(
 )
 
 
-def _gpu(value: str, _cfg: config.Config) -> str:
+def _gpu(value: str, cfg: config.Config) -> str:
     if value not in api.SHAPES:
         raise KdevError(f"gpu must be one of: {', '.join(api.SHAPES)}.")
+    cap = cap_for(value)
+    if cfg.default_hours and cfg.default_hours > cap:
+        cfg.default_hours = cap
+        ui.warn(f"hours lowered to {cap:g}h, TPU's limit")
     return value
 
 

@@ -242,6 +242,18 @@ def test_config_set_validates_and_unset_restores(home, kaggle, capsys):
     assert config.load().default_gpu == ""
 
 
+def test_config_set_gpu_tpu_lowers_hours_above_cap(home, kaggle, capsys):
+    cfg = configured()
+    cfg.default_hours = 12.0
+    config.save(cfg)
+    code, out, _ = kdev(capsys, "config", "set", "gpu", "tpu")
+    assert code == 0
+    assert "hours lowered to 9h, TPU's limit" in out
+    cfg = config.load()
+    assert cfg.default_gpu == "tpu"
+    assert cfg.default_hours == 9.0
+
+
 def test_config_set_reads_keys_from_files_not_the_command_line(home, kaggle, capsys, tmp_path):
     configured()
     key = tmp_path / "id.pub"
