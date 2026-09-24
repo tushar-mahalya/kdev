@@ -9,7 +9,9 @@ All notable changes are recorded here. The format follows
 ## [0.1.3] - 2026-09-24
 
 ### Added
-- kdev is on PyPI: `uv tool install kdev` or `pipx install kdev`. Releases are
+- kdev is on PyPI as `kdev-cli` (PyPI does not allow the name `kdev`):
+  `uv tool install kdev-cli` or `pipx install kdev-cli`; the command is still
+  `kdev`. Releases are
   published by GitHub Actions through Trusted Publishing, with an attestation
   for each file, so no upload token exists to leak.
 

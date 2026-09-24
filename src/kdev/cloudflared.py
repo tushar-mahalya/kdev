@@ -6,7 +6,7 @@ one-person wrapper -- so kdev fetches Cloudflare's own release directly, the
 same source Homebrew pulls from.
 
 A system install always wins; the managed copy is a fallback so that
-`uv tool install kdev` leaves nothing for the user to go and install by hand.
+`uv tool install kdev-cli` leaves nothing for the user to go and install by hand.
 """
 
 from __future__ import annotations

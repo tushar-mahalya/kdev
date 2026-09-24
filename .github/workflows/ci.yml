@@ -62,7 +62,10 @@ jobs:
       - name: Installs cleanly and runs
         run: |
           uv tool install dist/*.whl
-          kdev --version
+          # The version comes from the installed distribution's metadata; a
+          # wrong distribution name silently falls back to 0.0.0+source.
+          want="kdev $(uv run --no-project python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")"
+          test "$(kdev --version)" = "$want" || { echo "::error::kdev --version says '$(kdev --version)', want '$want'"; exit 1; }
           kdev --help > /dev/null
           python - <<'PY'
           import zipfile, glob

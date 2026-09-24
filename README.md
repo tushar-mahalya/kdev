@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/tushar-mahalya/kdev/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/tushar-mahalya/kdev/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://pypi.org/project/kdev/"><img alt="PyPI" src="https://img.shields.io/pypi/v/kdev?color=00b8d4"></a>
+  <a href="https://pypi.org/project/kdev-cli/"><img alt="PyPI" src="https://img.shields.io/pypi/v/kdev-cli?color=00b8d4"></a>
   <img alt="Python 3.11 | 3.12 | 3.13" src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-3776AB?logo=python&logoColor=white">
   <a href="https://github.com/tushar-mahalya/kdev/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2ea44f"></a>
   <a href="#contributing"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-00b8d4"></a>
@@ -151,11 +151,12 @@ queue looks like a queue and not a hang:
 Needs Python 3.11+, `ssh`, and a Kaggle account in a Kaggle group.
 
 ```bash
-uv tool install kdev      # or: pipx install kdev
+uv tool install kdev-cli      # or: pipx install kdev-cli
 kdev setup
 ```
 
-Upgrade with `uv tool upgrade kdev`. For what is on `main` but not released
+The package is `kdev-cli` (PyPI does not allow `kdev`); the command it installs
+is `kdev`. Upgrade with `uv tool upgrade kdev-cli`. For what is on `main` but not released
 yet: `uv tool install git+https://github.com/tushar-mahalya/kdev`.
 
 `kdev setup` does only what is missing, so it is safe to run again at any

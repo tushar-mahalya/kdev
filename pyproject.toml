@@ -1,5 +1,5 @@
 [project]
-name = "kdev"
+name = "kdev-cli"
 version = "0.1.3"
 description = "A Kaggle notebook as your remote dev box: SSH and VS Code in, files that persist across sessions, accounts and machines."
 readme = "README.md"
