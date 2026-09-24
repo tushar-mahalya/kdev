@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: If kdev helped your work, please cite it as below.
+type: software
+title: "kdev: a Kaggle notebook as your remote dev box"
+abstract: >-
+  A command-line tool that runs a Kaggle notebook session as a remote
+  development box: SSH and VS Code in over a Cloudflare tunnel, with the
+  working directory restored from the notebook's saved versions on every
+  start, across Kaggle accounts and machines.
+authors:
+  - given-names: Tushar
+    family-names: Sharma
+    alias: tushar-mahalya
+repository-code: https://github.com/tushar-mahalya/kdev
+url: https://pypi.org/project/kdev-cli/
+license: MIT
+keywords:
+  - kaggle
+  - remote development
+  - ssh
+  - vscode
+  - gpu
+  - cloudflare tunnel

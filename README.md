@@ -13,6 +13,7 @@
   <a href="https://pypi.org/project/kdev-cli/"><img alt="PyPI" src="https://img.shields.io/pypi/v/kdev-cli?logo=pypi&logoColor=white&color=00b8d4"></a>
   <a href="https://pypi.org/project/kdev-cli/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/kdev-cli?logo=python&logoColor=white&color=3776AB"></a>
   <a href="https://github.com/tushar-mahalya/kdev/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2ea44f"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/tushar-mahalya/kdev"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/tushar-mahalya/kdev/badge"></a>
   <a href="#contributing"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-00b8d4"></a>
 </p>
 
@@ -474,12 +475,17 @@ goes a different way than the project.
 
 ### Ways to help
 
+- **Ask a question** in [Discussions](https://github.com/tushar-mahalya/kdev/discussions):
+  how to do something, or whether what you see is expected.
 - **Report a bug.** Open an issue with what you ran, what you expected and
   what happened. The output of the same command with `-v` (`kdev -v up …`)
   helps most. It logs every Kaggle API call; check it for anything you would
   rather not share before you paste it.
-- **Fix something.** Pick an open issue and say in it that you are on it, so
-  two people don't fix the same thing.
+- **Fix something.** Issues labelled
+  [`good first issue`](https://github.com/tushar-mahalya/kdev/labels/good%20first%20issue)
+  are small and well described; [`help wanted`](https://github.com/tushar-mahalya/kdev/labels/help%20wanted)
+  ones are bigger. Say in the issue that you are on it, so two people don't
+  fix the same thing.
 - **Improve the docs.** If something here was unclear when you set up, it will
   be unclear to the next person too.
 - **Report a vulnerability** privately, as [SECURITY.md](https://github.com/tushar-mahalya/kdev/blob/main/SECURITY.md)
