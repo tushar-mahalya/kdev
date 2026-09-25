@@ -45,9 +45,11 @@ import json
 import os
 import sys
 import time
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Protocol
 
 import questionary
 from questionary import Choice
@@ -272,8 +274,14 @@ def live_dot(is_live: bool) -> Text:
     )
 
 
+class _Status(Protocol):
+    """What `spinner` yields: rich's live status, or the no-TTY stand-in."""
+
+    def update(self, *args: Any, **kwargs: Any) -> None: ...
+
+
 @contextmanager
-def spinner(text: str) -> Iterator[object]:
+def spinner(text: str) -> Iterator[_Status]:
     """A transient spinner. Present tense, lowercase, ends in an ellipsis."""
     if not interactive():
         yield _NullStatus()
@@ -426,9 +434,12 @@ def confirm(question: str, default: bool = True) -> bool:
 
 
 def ask(question: str, default: str = "", secret: bool = False) -> str:
-    fn = questionary.password if secret else questionary.text
-    kwargs = {} if secret else {"default": default}
-    answer = fn(question, style=STYLE, qmark=g("prompt"), **kwargs).ask()
+    # Called separately: `password` takes no default, and the two signatures
+    # are honest on their own terms rather than joined through **kwargs.
+    if secret:
+        answer = questionary.password(question, style=STYLE, qmark=g("prompt")).ask()
+    else:
+        answer = questionary.text(question, default=default, style=STYLE, qmark=g("prompt")).ask()
     if answer is None:
         raise Cancelled()
     return answer.strip()
@@ -461,7 +472,7 @@ def pick_hours(gpu: str, quota_hours: float) -> float:
         note = f"   more than the {quota_hours:.1f}h left" if h > quota_hours else ""
         choices.append(Choice(title=f"{h:g} hours{note}", value=h))
     choices.append(Choice(title="Custom…", value=0.0))
-    answer = select(f"Session length? (Kaggle stops it at {cap:g}h)", choices)
+    answer = float(select(f"Session length? (Kaggle stops it at {cap:g}h)", choices))
     if answer == 0.0:
         raw = questionary.text("Hours:", default="6", style=STYLE, qmark=g("prompt")).ask()
         if raw is None:
@@ -636,7 +647,7 @@ def ready_card(alias: str, host: str, hours: float, gpu: str, account: str, note
     card(Text.assemble((g("ok") + " ", "kdev.ok"), ("ready", "kdev.ok")), rows, tone="ok")
 
 
-def download(label: str, installer) -> object:
+def download(label: str, installer: Callable[..., Path]) -> Path:
     """Run an installer that reports (done, total) bytes, with a progress bar."""
     from rich.progress import (
         BarColumn,

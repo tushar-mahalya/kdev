@@ -14,7 +14,7 @@ def test_sharing_preserves_existing_collaborators():
     }
     sent = {}
     api.get_policy = lambda c, k: existing
-    api.call = lambda c, m, p=None, service=None: sent.update(p) or {}
+    api.call = lambda c, m, p=None, service=None: sent.update(p or {}) or {}
     api.share_with_group(api.Creds("a", "b"), 1, "my-team")
 
     policy = sent["policy"]
@@ -36,7 +36,9 @@ def test_resharing_does_not_duplicate_or_strand_the_group(monkeypatch):
     state = {"bindings": [{"role": fresh.ROLE_VIEWER, "members": [{"group": {"slug": "my-team"}}]}]}
     sent = {}
     monkeypatch.setattr(fresh, "get_policy", lambda c, k: state)
-    monkeypatch.setattr(fresh, "call", lambda c, m, p=None, service=None: sent.update(p) or {})
+    monkeypatch.setattr(
+        fresh, "call", lambda c, m, p=None, service=None: sent.update(p or {}) or {}
+    )
     fresh.share_with_group(fresh.Creds("a", "b"), 1, "my-team")
 
     bindings = sent["policy"]["bindings"]

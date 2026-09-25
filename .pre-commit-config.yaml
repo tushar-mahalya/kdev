@@ -50,6 +50,13 @@ repos:
 
   - repo: local
     hooks:
+      # The hints are checked, not merely written; config lives in pyproject.
+      - id: pyright
+        name: pyright
+        entry: uv run pyright
+        language: system
+        pass_filenames: false
+        always_run: true
       - id: pytest
         name: pytest
         entry: uv run pytest -q
