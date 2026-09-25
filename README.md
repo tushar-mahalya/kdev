@@ -500,6 +500,7 @@ git clone https://github.com/tushar-mahalya/kdev && cd kdev
 uv sync
 uv run pre-commit install        # hooks on commit, tests on push
 uv run pytest                    # 199 tests, no network needed
+uv run pytest --cov              # the same suite with a local coverage report
 uv run kdev -v …                 # the working tree, with API logging
 ```
 

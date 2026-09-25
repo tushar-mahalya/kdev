@@ -6,6 +6,10 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- CI reports test coverage from one Linux matrix job and includes the coverage
+  table in each pull request's job summary.
+
 ### Fixed
 - `kdev config set gpu tpu` lowers `hours` to 9h if it was above the TPU cap,
   preventing repeated warnings on `kdev up`.

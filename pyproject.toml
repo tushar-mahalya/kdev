@@ -55,7 +55,7 @@ include = ["src/kdev", "tests", "README.md", "LICENSE", "pyproject.toml"]
 [dependency-groups]
 # ruff is pinned to the version .pre-commit-config.yaml runs, so a clean
 # `uv run ruff` locally means a clean hook and a clean CI.
-dev = ["pytest>=8", "ruff==0.16.8", "pre-commit>=4"]
+dev = ["pytest>=8", "pytest-cov>=7.1", "ruff==0.16.8", "pre-commit>=4"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

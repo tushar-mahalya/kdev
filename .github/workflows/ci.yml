@@ -47,7 +47,23 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: uv sync --locked
-      - run: uv run pytest
+      - name: Run tests
+        if: matrix.os != 'ubuntu-latest' || matrix.python != '3.12'
+        run: uv run pytest
+      - name: Run tests with coverage
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+        run: uv run pytest --cov=kdev --cov-report=term --cov-report=markdown:coverage.md
+      - name: Add coverage summary
+        if: ${{ always() && matrix.os == 'ubuntu-latest' && matrix.python == '3.12' }}
+        shell: bash
+        run: |
+          if [ -f coverage.md ]; then
+            {
+              echo "## Test coverage"
+              echo
+              cat coverage.md
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   package:
     name: package builds and installs
