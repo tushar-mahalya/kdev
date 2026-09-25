@@ -76,6 +76,18 @@ def test_live_states_are_the_ones_that_still_cost_quota():
     assert "COMPLETE" not in api.LIVE_STATES
 
 
+def test_historical_status_uses_the_requested_version(monkeypatch):
+    seen = {}
+
+    def fake_call(creds, method, payload=None, service=api.KERNELS, attempts=3):
+        seen.update(payload or {})
+        return {"status": "COMPLETE"}
+
+    monkeypatch.setattr(api, "call", fake_call)
+    assert api.session_status(api.Creds("u"), "alice/box", "v7") == {"status": "COMPLETE"}
+    assert seen == {"userName": "alice", "kernelSlug": "box", "versionLabel": "v7"}
+
+
 def test_a_notebook_that_has_never_run_is_a_status_not_an_error(monkeypatch):
     """Measured on a notebook made in the Kaggle editor: GetKernelSessionStatus
     answers 404 "No runs found for this kernel". `kdev up` treated that as

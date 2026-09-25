@@ -368,6 +368,7 @@ kdev account use alice    # it runs the next box
 | `kdev down` | stop the box; files are saved however it stops |
 | `kdev ssh [-- ARGS]` | shell on the box; ssh's exit code is kdev's |
 | `kdev status [--json]` | running?, started by, ends at, reachable, restore state |
+| `kdev history [-n N] [--json]` | recent saved sessions, who ran them and how they ended |
 | `kdev logs [-n N] [--all]` | the session log |
 | `kdev restore [--from vN \| --from-backup]` | put saved files back |
 | `kdev backup` | copy the running box to this machine |
@@ -390,7 +391,7 @@ Global: `-v` logs every Kaggle API call with its status and timing;
 run) · `2` usage mistake · `130` cancelled.
 
 **Scripting:** every prompt has a flag, and a prompt never appears without a
-terminal. `status`, `account` and `workspace files` take `--json` (data on
+terminal. `status`, `history`, `account` and `workspace files` take `--json` (data on
 stdout, errors on stderr). `NO_COLOR` is honoured.
 
 ---

@@ -6,6 +6,11 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `kdev history` shows recent saved sessions, including who ran them, their
+  status, file count and restore state; `-n` limits rows and `--json` emits
+  the same data for scripts.
+
 ### Fixed
 - `kdev config set gpu tpu` lowers `hours` to 9h if it was above the TPU cap,
   preventing repeated warnings on `kdev up`.

@@ -203,19 +203,24 @@ def session_output(creds: Creds, slug: str, version: str = "") -> list[dict]:
 NEVER_RUN = "NEVER_RUN"
 
 
-def session_status(creds: Creds, slug: str) -> dict:
+def session_status(creds: Creds, slug: str, version: str = "") -> dict:
     """{"status": ..., "failureMessage": ...} -- the second is why it stopped.
 
-    A 404 means there is no session to report, which is an answer, not a
-    failure: every caller only asks "is something running?". Whether the
-    notebook itself exists is checked where it matters, by GetKernel.
+    Pass a saved version label such as "v7" to ask about that run instead of
+    the latest one.
+
+    A 404 for the latest run means the notebook has never run. For an explicit
+    historical version it means Kaggle has no status for that version.
     """
     user, _, kslug = slug.partition("/")
+    payload = {"userName": user, "kernelSlug": kslug}
+    if version:
+        payload["versionLabel"] = version
     try:
-        return call(creds, "GetKernelSessionStatus", {"userName": user, "kernelSlug": kslug})
+        return call(creds, "GetKernelSessionStatus", payload)
     except KaggleError as e:
         if e.status == 404:
-            return {"status": NEVER_RUN}
+            return {"status": "UNKNOWN" if version else NEVER_RUN}
         raise
 
 

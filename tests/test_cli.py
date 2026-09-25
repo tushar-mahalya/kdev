@@ -18,6 +18,8 @@ class FakeKaggle:
 
     def __init__(self):
         self.status = "COMPLETE"
+        self.statuses: dict[str, str] = {}
+        self.states: dict[str, dict] = {}
         self.version = 3
         self.saved: list[dict] = []
         self.cancelled: list[tuple[str, int]] = []
@@ -31,7 +33,12 @@ class FakeKaggle:
 
     def install(self, monkeypatch):
         mp = monkeypatch.setattr
-        mp(api, "session_status", lambda c, s: {"status": self.status})
+        mp(
+            api,
+            "session_status",
+            lambda c, s, v="": {"status": self.statuses.get(v, self.status)},
+        )
+        mp(persistence, "_state", lambda files: self.states.get(files.get(persistence.STATE, "")))
         mp(
             api,
             "get_kernel",
@@ -169,6 +176,90 @@ def test_the_overview_shows_the_box_and_every_account(home, kaggle, capsys):
     assert code == 0
     assert "stopped" in out and "alice" in out and "bob" in out
     assert "kdev up" in out  # the next step, when not in a terminal
+
+
+# --- history --------------------------------------------------------------------
+
+
+def test_history_lists_recent_saved_sessions(home, kaggle, capsys):
+    configured()
+    kaggle.version = 4
+    kaggle.outputs = {
+        "v4": [],
+        "v3": [
+            {"name": "notes.md", "url": "u3"},
+            {"name": ".kdev/state.json", "url": "state:v3"},
+        ],
+        "v2": [
+            {"name": "src/app.py", "url": "u2"},
+            {"name": "data.bin", "url": "d2"},
+            {"name": ".kdev/state.json", "url": "state:v2"},
+        ],
+        "v1": [{"name": "old.txt", "url": "u1"}],
+    }
+    kaggle.states = {
+        "state:v3": {
+            "run_by": "alice",
+            "started": "2026-09-25T10:00:00Z",
+            "ends": 1790334000,
+            "restored": True,
+            "finished": "2026-09-25T10:01:00Z",
+        },
+        "state:v2": {
+            "run_by": "bob",
+            "started": "2026-09-24T12:00:00Z",
+            "ends": 1790251200,
+            "restored": False,
+        },
+    }
+    kaggle.statuses = {"v3": "COMPLETE", "v2": "ERROR", "v1": "CANCEL_ACKNOWLEDGED"}
+
+    code, out, err = kdev(capsys, "history", "-n", "2")
+    assert code == 0, err
+    assert "v3" in out and "alice" in out and "COMPLETE" in out
+    assert "v2" in out and "bob" in out and "ERROR" in out
+    assert "v1" not in out
+
+
+def test_history_json_is_machine_readable(home, kaggle, capsys):
+    configured()
+    kaggle.version = 2
+    kaggle.outputs = {
+        "v2": [
+            {"name": "work.py", "url": "u2"},
+            {"name": ".kdev/state.json", "url": "state:v2"},
+        ],
+        "v1": [{"name": "plain.txt", "url": "u1"}],
+    }
+    kaggle.states = {
+        "state:v2": {
+            "run_by": "alice",
+            "started": "2026-09-25T10:00:00Z",
+            "ends": 1790334000,
+            "restored": True,
+            "finished": "2026-09-25T10:02:00Z",
+        }
+    }
+    kaggle.statuses = {"v2": "COMPLETE", "v1": "CANCEL_ACKNOWLEDGED"}
+
+    code, out, err = kdev(capsys, "history", "--json")
+    data = json.loads(out)
+    assert code == 0, err
+    assert data["notebook"] == "alice/box"
+    assert [row["version"] for row in data["sessions"]] == ["v2", "v1"]
+    assert data["sessions"][0] == {
+        "version": "v2",
+        "run_by": "alice",
+        "started": "2026-09-25T10:00:00Z",
+        "ends": 1790334000,
+        "status": "COMPLETE",
+        "files": 1,
+        "restored": True,
+        "restore_finished": "2026-09-25T10:02:00Z",
+    }
+    assert data["sessions"][1]["status"] == "CANCEL_ACKNOWLEDGED"
+    assert data["sessions"][1]["run_by"] is None
+    assert data["sessions"][1]["restored"] is None
 
 
 # --- accounts -----------------------------------------------------------------

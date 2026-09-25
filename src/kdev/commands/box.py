@@ -577,6 +577,73 @@ def status(
         ui.hint("Running but not reachable yet: give it a minute, or `kdev logs` to see why.")
 
 
+# --- history ------------------------------------------------------------------
+
+
+def _history_time(value: object) -> str:
+    if value in (None, ""):
+        return "—"
+    if isinstance(value, (int, float)):
+        return time.strftime("%Y-%m-%d %H:%M", time.localtime(value))
+    return str(value).replace("T", " ").removesuffix("Z")
+
+
+def history(
+    limit: int = typer.Option(10, "--limit", "-n", min=1, help="Show at most N saved sessions."),
+    account: str = typer.Option("", "--account", "-a", help="Read as this account."),
+    as_json: bool = typer.Option(False, "--json", help="Print JSON instead."),
+) -> None:
+    """Past saved sessions: who ran them, how they ended and what they saved."""
+    cfg = config.load()
+    target = need_notebook(cfg)
+    creds = cfg.profile(account).creds
+    with ui.spinner("reading session history…"):
+        try:
+            latest = int(api.get_kernel(creds, target).get("currentVersionNumber") or 0)
+            rows = persistence.session_history(creds, target, latest, limit)
+        except api.KaggleError as e:
+            raise KdevError(f"Could not read the history of {target}.", str(e)) from e
+
+    if as_json:
+        ui.emit_json({"notebook": target, "sessions": rows})
+        return
+
+    if not rows:
+        ui.hint("no saved sessions yet")
+        return
+
+    display = []
+    for row in rows:
+        restored = row["restored"]
+        restore = "yes" if restored is True else "no" if restored is False else "—"
+        display.append(
+            (
+                row["version"],
+                row["run_by"] or "—",
+                _history_time(row["started"]),
+                _history_time(row["ends"]),
+                row["status"],
+                row["files"],
+                restore,
+            )
+        )
+    ui.console.print(
+        ui.table(
+            [
+                ("version", "left"),
+                ("account", "left"),
+                ("started", "left"),
+                ("ends", "left"),
+                ("status", "left"),
+                ("files", "right"),
+                ("restored", "left"),
+            ],
+            display,
+            title=target,
+        )
+    )
+
+
 # --- logs ---------------------------------------------------------------------
 
 

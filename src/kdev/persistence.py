@@ -127,6 +127,41 @@ def newest_saved(creds: api.Creds, notebook: str, latest: int) -> tuple[str, dic
     return "", {}
 
 
+def session_history(creds: api.Creds, notebook: str, latest: int, limit: int = 10) -> list[dict]:
+    """Recent saved sessions, newest first.
+
+    Empty/source-only versions are skipped, matching the restore walk. State
+    metadata comes from the version itself and run status is requested for the
+    same version label.
+    """
+    rows: list[dict] = []
+    for number in range(latest, 0, -1):
+        if len(rows) >= limit:
+            break
+        label = f"v{number}"
+        files = version_files(creds, notebook, label)
+        if not files:
+            continue
+        state = _state(files) or {}
+        try:
+            status = api.session_status(creds, notebook, label)
+        except api.KaggleError:
+            status = {"status": "UNKNOWN"}
+        rows.append(
+            {
+                "version": label,
+                "run_by": state.get("run_by") or None,
+                "started": state.get("started") or None,
+                "ends": state.get("ends") or None,
+                "status": status.get("status") or "UNKNOWN",
+                "files": sum(not name.startswith(".kdev/") for name in files),
+                "restored": state.get("restored") if "restored" in state else None,
+                "restore_finished": state.get("finished") or None,
+            }
+        )
+    return rows
+
+
 def _fetched(files: dict[str, str]) -> set[str]:
     """The names a version's restore delivered (its .kdev/fetched)."""
     url = files.get(FETCHED)
