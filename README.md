@@ -367,6 +367,7 @@ kdev account use alice    # it runs the next box
 | `kdev up` | start the box, or connect to the running one |
 | `kdev down` | stop the box; files are saved however it stops |
 | `kdev ssh [-- ARGS]` | shell on the box; ssh's exit code is kdev's |
+| `kdev forward PORT...` | forward localhost ports to services on the box (`9000:8888` remaps a port) |
 | `kdev status [--json]` | running?, started by, ends at, reachable, restore state |
 | `kdev logs [-n N] [--all]` | the session log |
 | `kdev restore [--from vN \| --from-backup]` | put saved files back |

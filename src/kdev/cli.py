@@ -70,6 +70,7 @@ app.command("down")(box.down)
 app.command("ssh", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})(
     box.ssh
 )
+app.command("forward")(box.forward)
 app.command("status")(box.status)
 app.command("logs")(box.logs)
 app.command("restore")(box.restore_cmd)

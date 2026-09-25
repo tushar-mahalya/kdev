@@ -6,6 +6,11 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `kdev forward` opens one or more localhost port forwards to services on the
+  box, including `LOCAL:REMOTE` mappings, with clear checks for occupied local
+  ports and services that are not listening remotely.
+
 ### Fixed
 - `kdev config set gpu tpu` lowers `hours` to 9h if it was above the TPU cap,
   preventing repeated warnings on `kdev up`.

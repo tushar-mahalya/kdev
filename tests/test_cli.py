@@ -499,6 +499,72 @@ def test_ssh_with_no_known_host_explains(home, kaggle, capsys):
     assert code == 1 and "kdev up" in err
 
 
+def test_forward_builds_one_ssh_tunnel_for_all_ports(home, kaggle, capsys, monkeypatch):
+    configured()
+    sshcfg.write("kaggle", "box.example.com")
+    monkeypatch.setattr(session, "reachable", lambda alias, timeout=10: True)
+    monkeypatch.setattr("kdev.commands.box._local_port_free", lambda port: True)
+    monkeypatch.setattr("kdev.commands.box._remote_port_open", lambda alias, port: True)
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return type("R", (), {"returncode": 0})()
+
+    monkeypatch.setattr("subprocess.run", run)
+    code, out, err = kdev(capsys, "forward", "8888", "9000:8888")
+    assert code == 0, err
+    assert calls == [
+        [
+            "ssh",
+            "-N",
+            "-o",
+            "ExitOnForwardFailure=yes",
+            "-L",
+            "8888:localhost:8888",
+            "-L",
+            "9000:localhost:8888",
+            "kaggle",
+        ]
+    ]
+    assert "http://localhost:8888" in out
+    assert "http://localhost:9000" in out
+
+
+def test_forward_rejects_a_busy_local_port(home, kaggle, capsys, monkeypatch):
+    configured()
+    sshcfg.write("kaggle", "box.example.com")
+    monkeypatch.setattr("kdev.commands.box._local_port_free", lambda port: port != 8888)
+    code, _, err = kdev(capsys, "forward", "8888")
+    assert code == 1
+    assert "Local port 8888 is already in use" in err
+
+
+def test_forward_rejects_a_remote_port_with_no_listener(home, kaggle, capsys, monkeypatch):
+    configured()
+    sshcfg.write("kaggle", "box.example.com")
+    monkeypatch.setattr(session, "reachable", lambda alias, timeout=10: True)
+    monkeypatch.setattr("kdev.commands.box._local_port_free", lambda port: True)
+    monkeypatch.setattr("kdev.commands.box._remote_port_open", lambda alias, port: False)
+    code, _, err = kdev(capsys, "forward", "9000:8888")
+    assert code == 1
+    assert "Nothing is listening on port 8888 on the box" in err
+
+
+def test_forward_ctrl_c_exits_130(home, kaggle, capsys, monkeypatch):
+    configured()
+    sshcfg.write("kaggle", "box.example.com")
+    monkeypatch.setattr(session, "reachable", lambda alias, timeout=10: True)
+    monkeypatch.setattr("kdev.commands.box._local_port_free", lambda port: True)
+    monkeypatch.setattr("kdev.commands.box._remote_port_open", lambda alias, port: True)
+    monkeypatch.setattr(
+        "subprocess.run", lambda *a, **k: (_ for _ in ()).throw(KeyboardInterrupt())
+    )
+    code, _, err = kdev(capsys, "forward", "8888")
+    assert code == 130
+    assert "Traceback" not in err
+
+
 # --- failures are always rendered, never raw ----------------------------------
 
 

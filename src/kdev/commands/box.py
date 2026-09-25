@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import re
+import shlex
+import socket
 import subprocess
 import time
+from typing import Annotated
 
 import typer
 from rich.text import Text
@@ -472,6 +475,115 @@ def ssh(ctx: typer.Context) -> None:
         raise KdevError("No box hostname known yet.", "Start or find it with: kdev up")
     # ssh's own exit code is this command's, so scripts can wrap it.
     raise typer.Exit(subprocess.run(["ssh", cfg.ssh_host_alias, *ctx.args]).returncode)
+
+
+def _forward_mapping(spec: str) -> tuple[int, int]:
+    """Parse `REMOTE` or `LOCAL:REMOTE` into a pair of TCP ports."""
+    parts = spec.split(":")
+    if len(parts) == 1:
+        parts = [parts[0], parts[0]]
+    if len(parts) != 2 or not all(part.isdigit() for part in parts):
+        raise KdevError(
+            f"Invalid port mapping {spec!r}.",
+            "Use a port like 8888, or a mapping like 9000:8888.",
+        )
+    local, remote = (int(part) for part in parts)
+    if not all(1 <= port <= 65535 for port in (local, remote)):
+        raise KdevError(
+            f"Invalid port mapping {spec!r}.",
+            "TCP ports must be between 1 and 65535.",
+        )
+    return local, remote
+
+
+def _local_port_free(port: int) -> bool:
+    """Whether localhost can bind `port` right now."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", port))
+    except OSError:
+        return False
+    finally:
+        sock.close()
+    return True
+
+
+def _remote_port_open(alias: str, port: int) -> bool:
+    """Whether the box accepts a TCP connection on localhost:`port`."""
+    script = (
+        "import socket,sys;"
+        "s=socket.socket();s.settimeout(2);"
+        f"r=s.connect_ex(('127.0.0.1',{port}));"
+        "s.close();sys.exit(0 if r == 0 else 1)"
+    )
+    try:
+        result = subprocess.run(
+            [
+                "ssh",
+                "-T",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "ConnectTimeout=10",
+                alias,
+                f"python3 -c {shlex.quote(script)}",
+            ],
+            capture_output=True,
+            timeout=20,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return False
+    return result.returncode == 0
+
+
+def forward(
+    ports: Annotated[
+        list[str],
+        typer.Argument(help="Port(s): 8888, or LOCAL:REMOTE such as 9000:8888."),
+    ],
+) -> None:
+    """Reach services on the box through localhost."""
+    cfg = config.load()
+    if not cfg.ssh_host_alias:
+        raise KdevError("No ssh alias configured.", "Run: kdev setup")
+    session.ssh_ready(cfg)
+    if not sshcfg.has_block():
+        raise KdevError("No box hostname known yet.", "Start or find it with: kdev up")
+
+    mappings = [_forward_mapping(spec) for spec in ports]
+    local_ports = [local for local, _remote in mappings]
+    if len(local_ports) != len(set(local_ports)):
+        raise KdevError(
+            "The same local port was requested more than once.",
+            "Use a different local port, for example 9000:8888.",
+        )
+
+    for local, _remote in mappings:
+        if not _local_port_free(local):
+            raise KdevError(
+                f"Local port {local} is already in use.",
+                f"Choose another local port with LOCAL:{_remote}, for example 9000:{_remote}.",
+            )
+
+    alias = cfg.ssh_host_alias
+    if not session.reachable(alias):
+        raise KdevError("Could not reach the box over ssh.", "Is it up? kdev status")
+
+    for remote in dict.fromkeys(remote for _local, remote in mappings):
+        if not _remote_port_open(alias, remote):
+            raise KdevError(
+                f"Nothing is listening on port {remote} on the box.",
+                "Start the service there first, then run kdev forward again.",
+            )
+
+    for local, remote in mappings:
+        ui.ok(f"http://localhost:{local}", f"box localhost:{remote}")
+
+    command = ["ssh", "-N", "-o", "ExitOnForwardFailure=yes"]
+    for local, remote in mappings:
+        command += ["-L", f"{local}:localhost:{remote}"]
+    command.append(alias)
+    raise typer.Exit(subprocess.run(command).returncode)
 
 
 # --- status -------------------------------------------------------------------
