@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import subprocess
 import time
+from typing import NoReturn
 
 import typer
 from rich.text import Text
@@ -353,7 +354,7 @@ def _open(alias: str, how: str | None, interactive: bool) -> None:
         ui.hint("Back on your machine. The box is still running: kdev down stops it.")
 
 
-def _explain_no_tunnel(creds: api.Creds, target: str, seen: dict) -> None:
+def _explain_no_tunnel(creds: api.Creds, target: str, seen: dict) -> NoReturn:
     try:
         state = api.session_status(creds, target)
     except api.KaggleError:

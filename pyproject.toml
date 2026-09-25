@@ -55,7 +55,7 @@ include = ["src/kdev", "tests", "README.md", "LICENSE", "pyproject.toml"]
 [dependency-groups]
 # ruff is pinned to the version .pre-commit-config.yaml runs, so a clean
 # `uv run ruff` locally means a clean hook and a clean CI.
-dev = ["pytest>=8", "ruff==0.16.8", "pre-commit>=4"]
+dev = ["pytest>=8", "ruff==0.16.8", "pre-commit>=4", "pyright>=1.1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -71,3 +71,12 @@ docstring-code-format = true
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 ignore = ["E501", "RUF001", "RUF002", "RUF003"]  # the design glyphs are deliberate
+
+# Basic mode for now: catches wrong types, misspelled attributes and
+# str | None passed where str is needed, without demanding full strictness.
+# kdev_box.py runs inside the Kaggle notebook with only the standard
+# library, so it must never gain imports from this package at runtime.
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"

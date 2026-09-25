@@ -42,12 +42,16 @@ def test_bootstrap_survives_hostile_values_and_roundtrips_them(hostile):
         hold_seconds=60,
     )
     tree = ast.parse(src)  # raises if the value escaped the literal
-    blob = next(
-        n.value.args[0].value
+    assign = next(
+        n
         for n in ast.walk(tree)
         if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "CFG"
     )
-    assert json.loads(blob)["tunnel_token"] == hostile
+    call = assign.value
+    assert isinstance(call, ast.Call) and call.args
+    literal = call.args[0]
+    assert isinstance(literal, ast.Constant) and isinstance(literal.value, str)
+    assert json.loads(literal.value)["tunnel_token"] == hostile
 
 
 def test_ready_marker_regex_matches_emitted_line():
@@ -210,6 +214,7 @@ def test_the_box_gets_its_restore_code_and_plan_at_boot():
         restore_layers=["v3", "v4"],
     )
     m = re.search(r'CFG = json\.loads\(r"""(.*?)"""\)', src, re.DOTALL)
+    assert m, "the rendered script must embed CFG as a raw json.loads literal"
     cfg = json.loads(m.group(1))
     assert cfg["box_script"] == bootstrap.BOX_SCRIPT.read_text()
     assert cfg["restore_layers"] == ["v3", "v4"]

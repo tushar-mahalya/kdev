@@ -499,14 +499,15 @@ You need Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 git clone https://github.com/tushar-mahalya/kdev && cd kdev
 uv sync
 uv run pre-commit install        # hooks on commit, tests on push
+uv run pyright                   # basic-mode type check, also on every commit
 uv run pytest                    # 199 tests, no network needed
 uv run kdev -v …                 # the working tree, with API logging
 ```
 
-Every commit runs formatting, lint, a secrets scan (`detect-secrets`,
-private-key detection), config validation and a lockfile check; every push
-runs the tests. CI runs the same hooks, the tests on Python 3.11–3.13, a
-build-and-install check, and `gitleaks` over the full history.
+Every commit runs formatting, lint, type-checking (`pyright`), a secrets scan
+(`detect-secrets`, private-key detection), config validation and a lockfile
+check; every push runs the tests. CI runs the same hooks, the tests on Python
+3.11–3.13, a build-and-install check, and `gitleaks` over the full history.
 
 ### Trying a change against real Kaggle
 
