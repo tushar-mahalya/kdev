@@ -164,6 +164,79 @@ def test_injection_survives_malformed_json_without_losing_it():
     assert "{not valid json" in out and kt == "script"
 
 
+def test_session_end_warnings_fire_once_and_wall_failure_is_nonfatal(capsys):
+    src = bootstrap.render(
+        ssh_public_key="k",
+        tunnel_hostname="",
+        hold_seconds=60 * 60,
+    )
+    body = src[src.index("END_WARNING_MINUTES = ") : src.index("def end_run():")]
+
+    calls = []
+
+    class FakeSubprocess:
+        DEVNULL = object()
+
+        class SubprocessError(Exception):
+            pass
+
+        @staticmethod
+        def run(argv, **kwargs):
+            calls.append(argv)
+            if len(calls) == 1:
+                raise OSError("wall unavailable")
+            return type("R", (), {"returncode": 0})()
+
+    ns = {"subprocess": FakeSubprocess}
+    exec(body, ns)
+    warned = set()
+
+    ns["warn_ending"](901, 899, warned)
+    ns["warn_ending"](899, 850, warned)  # still below 15m: no duplicate
+    ns["warn_ending"](301, 299, warned)
+    ns["warn_ending"](299, 250, warned)  # still below 5m: no duplicate
+
+    out = capsys.readouterr().out
+    assert out.count("KDEV_ENDING minutes_left=15") == 1
+    assert out.count("KDEV_ENDING minutes_left=5") == 1
+    assert warned == {15, 5}
+    assert calls == [
+        ["wall", "kdev session ends in 15 minutes"],
+        ["wall", "kdev session ends in 5 minutes"],
+    ]
+
+    main = src[src.index("def main():") :]
+    assert 'previous_left = CFG["hold_seconds"]' in main
+    assert "warn_ending(previous_left, left, warned)" in main
+    assert main.index("warn_ending(previous_left, left, warned)") < main.index(
+        'print(f"KDEV_ALIVE seconds_left={left}"'
+    )
+
+
+def test_short_sessions_do_not_emit_thresholds_they_never_cross(capsys):
+    src = bootstrap.render(ssh_public_key="k", tunnel_hostname="", hold_seconds=10 * 60)
+    body = src[src.index("END_WARNING_MINUTES = ") : src.index("def end_run():")]
+
+    class FakeSubprocess:
+        DEVNULL = object()
+
+        class SubprocessError(Exception):
+            pass
+
+        @staticmethod
+        def run(*args, **kwargs):
+            return type("R", (), {"returncode": 0})()
+
+    ns = {"subprocess": FakeSubprocess}
+    exec(body, ns)
+    warned = set()
+
+    # A ten-minute session never crosses the 15-minute threshold.
+    ns["warn_ending"](600, 599, warned)
+    assert 15 not in warned
+    assert "minutes_left=15" not in capsys.readouterr().out
+
+
 def test_a_long_session_checkpoints_instead_of_only_saving_at_the_end():
     """Kaggle commits /kaggle/working once, when the run ends. Without a timer
     an infra fault at hour 7 of 9 takes everything with it."""

@@ -222,6 +222,29 @@ def snapshot(dest):
     sh(f"git -C {dest} push", check=False)
 
 
+END_WARNING_MINUTES = (15, 5)
+
+
+def warn_ending(previous_left, left, warned):
+    """Announce each session-end threshold once, in logs and every shell."""
+    for minutes in END_WARNING_MINUTES:
+        threshold = minutes * 60
+        if minutes in warned or not (previous_left >= threshold >= left):
+            continue
+        print(f"KDEV_ENDING minutes_left={minutes}", flush=True)
+        try:
+            subprocess.run(
+                ["wall", f"kdev session ends in {minutes} minutes"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass
+        warned.add(minutes)
+
+
 def end_run():
     """Make sure nothing below this cell runs once the session is over.
 
@@ -279,6 +302,8 @@ def main():
     signal.signal(signal.SIGTERM, lambda *_: stop.__setitem__("now", True))
     next_checkpoint = time.time() + CHECKPOINT_SECONDS
     next_meta = time.time() + META_SECONDS
+    warned = set()
+    previous_left = CFG["hold_seconds"]
     try:
         stop_file = pathlib.Path("/kaggle/working/.kdev-stop")
         while time.time() < deadline and not stop["now"]:
@@ -309,6 +334,8 @@ def main():
             # A heartbeat keeps the log stream flowing so the CLI can tell the
             # difference between 'alive and idle' and 'dead'.
             left = int(deadline - time.time())
+            warn_ending(previous_left, left, warned)
+            previous_left = left
             print(f"KDEV_ALIVE seconds_left={left}", flush=True)
             # Short sleeps so a stop request is noticed promptly.
             for _ in range(6):
