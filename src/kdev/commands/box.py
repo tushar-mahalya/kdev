@@ -583,7 +583,7 @@ def status(
 def logs(
     account: str = typer.Option("", "--account", "-a", help="Read as this account."),
     lines: int = typer.Option(0, "--lines", "-n", help="Stop after N lines (default: follow)."),
-    everything: bool = typer.Option(False, "--all", help="Include kdev's heartbeat lines."),
+    everything: bool = typer.Option(False, "--all", help="Include heartbeat and debugger lines."),
 ) -> None:
     """Stream the session's log."""
     cfg = config.load()
@@ -591,7 +591,7 @@ def logs(
     shown = 0
     for line in api.stream_logs(cfg.profile(account).creds, target):
         text = line.rstrip()
-        if not everything and text.startswith("KDEV_ALIVE"):
+        if not everything and text.startswith(("KDEV_ALIVE", "0.00s - ")):
             continue
         ui.console.print(text, highlight=False, markup=False)
         shown += 1
