@@ -51,9 +51,9 @@ repos:
   - repo: local
     hooks:
       # The hints are checked, not merely written; config lives in pyproject.
-      - id: pyright
-        name: pyright
-        entry: uv run pyright
+      - id: basedpyright
+        name: basedpyright
+        entry: uv run basedpyright
         language: system
         pass_filenames: false
         always_run: true

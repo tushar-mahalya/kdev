@@ -7,7 +7,7 @@ All notable changes are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
-- `uv run pyright` type-checks `src` and `tests` in basic mode; it runs on
+- `uv run basedpyright` type-checks `src` and `tests` in basic mode; it runs on
   every commit with the pre-commit hooks and in CI with the other checks.
 
 ### Fixed
