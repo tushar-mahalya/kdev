@@ -479,9 +479,18 @@ def test_status_writes_the_ssh_block_on_a_machine_without_one(home, kaggle, caps
 
 def test_logs_skip_heartbeats_and_stop_after_n(home, kaggle, capsys):
     configured()
-    kaggle.logs = ["one", "KDEV_ALIVE seconds_left=10", "two", "three"]
+    kaggle.logs = [
+        "0.00s - Debugger warning: It seems that frozen modules are being used",
+        "one",
+        "KDEV_ALIVE seconds_left=10",
+        "two",
+        "three",
+    ]
     code, out, _ = kdev(capsys, "logs", "-n", "2")
     assert code == 0 and out.split() == ["one", "two"]
+
+    code, out_all, _ = kdev(capsys, "logs", "--all")
+    assert code == 0 and out_all.splitlines() == kaggle.logs
 
 
 def test_restore_rejects_a_bad_version_and_needs_a_box(home, kaggle, capsys):

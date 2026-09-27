@@ -501,6 +501,7 @@ uv sync
 uv run pre-commit install        # hooks on commit, tests on push
 uv run basedpyright              # basic-mode type check, also on every commit
 uv run pytest                    # 199 tests, no network needed
+uv run pytest --cov              # the same suite with a local coverage report
 uv run kdev -v …                 # the working tree, with API logging
 ```
 
