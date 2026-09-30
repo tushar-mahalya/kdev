@@ -222,6 +222,30 @@ def snapshot(dest):
     sh(f"git -C {dest} push", check=False)
 
 
+END_WARNING_MINUTES = (15, 5)
+
+
+def warn_ending(previous_left, left, warned, pts_dir="/dev/pts"):
+    """Announce each session-end threshold once, in logs and open terminals."""
+    for minutes in END_WARNING_MINUTES:
+        threshold = minutes * 60
+        if minutes in warned or not (previous_left >= threshold >= left):
+            continue
+        print(f"KDEV_ENDING minutes_left={minutes}", flush=True)
+        message = f"\r\nkdev: session ends in {minutes} minutes\r\n".encode()
+        # VS Code terminals may not be recorded in utmp, so wall misses them.
+        for tty in pathlib.Path(pts_dir).glob("[0-9]*"):
+            try:
+                fd = os.open(tty, os.O_WRONLY | os.O_NOCTTY | os.O_NONBLOCK)
+                try:
+                    os.write(fd, message)
+                finally:
+                    os.close(fd)
+            except OSError:
+                pass  # a terminal we cannot write to must never end the session
+        warned.add(minutes)
+
+
 def end_run():
     """Make sure nothing below this cell runs once the session is over.
 
@@ -279,6 +303,9 @@ def main():
     signal.signal(signal.SIGTERM, lambda *_: stop.__setitem__("now", True))
     next_checkpoint = time.time() + CHECKPOINT_SECONDS
     next_meta = time.time() + META_SECONDS
+    warned = set()
+    # Seed from the full duration to catch thresholds crossed before the first tick.
+    previous_left = CFG["hold_seconds"]
     try:
         stop_file = pathlib.Path("/kaggle/working/.kdev-stop")
         while time.time() < deadline and not stop["now"]:
@@ -309,6 +336,8 @@ def main():
             # A heartbeat keeps the log stream flowing so the CLI can tell the
             # difference between 'alive and idle' and 'dead'.
             left = int(deadline - time.time())
+            warn_ending(previous_left, left, warned)
+            previous_left = left
             print(f"KDEV_ALIVE seconds_left={left}", flush=True)
             # Short sleeps so a stop request is noticed promptly.
             for _ in range(6):

@@ -1,7 +1,10 @@
 import ast
 import json
 import os
+import pathlib
 import re
+from collections.abc import Callable
+from typing import cast
 
 import pytest
 
@@ -166,6 +169,87 @@ def test_injection_survives_malformed_json_without_losing_it():
     src = bootstrap.render(ssh_public_key="k", tunnel_hostname="", hold_seconds=60)
     out, kt = bootstrap.inject("{not valid json", src)
     assert "{not valid json" in out and kt == "script"
+
+
+def test_session_end_warnings_write_each_pty_nonblocking_and_fire_once(
+    capsys, monkeypatch, tmp_path
+):
+    src = bootstrap.render(
+        ssh_public_key="k",
+        tunnel_hostname="",
+        hold_seconds=60 * 60,
+    )
+    body = src[src.index("END_WARNING_MINUTES = ") : src.index("def end_run():")]
+
+    for name in ("0", "1"):
+        (tmp_path / name).write_text("")
+    (tmp_path / "2").mkdir()
+
+    opened = []
+    writes = []
+    delivered = []
+    original_open = os.open
+    original_write = os.write
+
+    def tracked_open(path, flags, *args, **kwargs):
+        opened.append((pathlib.Path(path), flags))
+        return original_open(path, flags, *args, **kwargs)
+
+    def tracked_write(fd, data):
+        writes.append(data)
+        if len(writes) == 1:
+            raise BlockingIOError("terminal buffer is full")
+        written = original_write(fd, data)
+        delivered.append(data)
+        return written
+
+    monkeypatch.setattr(os, "open", tracked_open)
+    monkeypatch.setattr(os, "write", tracked_write)
+
+    ns = {"os": os, "pathlib": pathlib}
+    exec(body, ns)
+    warn_ending = cast(Callable[[int, int, set[int], str], None], ns["warn_ending"])
+    warned = set()
+
+    warn_ending(901, 899, warned, str(tmp_path))
+    warn_ending(899, 850, warned, str(tmp_path))  # no duplicate
+    warn_ending(301, 299, warned, str(tmp_path))
+    warn_ending(299, 250, warned, str(tmp_path))  # no duplicate
+
+    out = capsys.readouterr().out
+    assert out.count("KDEV_ENDING minutes_left=15") == 1
+    assert out.count("KDEV_ENDING minutes_left=5") == 1
+    assert warned == {15, 5}
+    assert len(opened) == 6  # two files and one failing directory per warning
+    assert all(flags & os.O_WRONLY for _, flags in opened)
+    assert all(flags & os.O_NOCTTY for _, flags in opened)
+    assert all(flags & os.O_NONBLOCK for _, flags in opened)
+    assert writes.count(b"\r\nkdev: session ends in 15 minutes\r\n") == 2
+    assert writes.count(b"\r\nkdev: session ends in 5 minutes\r\n") == 2
+    assert delivered.count(b"\r\nkdev: session ends in 15 minutes\r\n") == 1
+    assert delivered.count(b"\r\nkdev: session ends in 5 minutes\r\n") == 2
+
+    main = src[src.index("def main():") :]
+    assert "Seed from the full duration to catch thresholds crossed before the first tick." in main
+    assert 'previous_left = CFG["hold_seconds"]' in main
+    assert "warn_ending(previous_left, left, warned)" in main
+    assert main.index("warn_ending(previous_left, left, warned)") < main.index(
+        'print(f"KDEV_ALIVE seconds_left={left}"'
+    )
+
+
+def test_short_sessions_do_not_emit_thresholds_they_never_cross(capsys, tmp_path):
+    src = bootstrap.render(ssh_public_key="k", tunnel_hostname="", hold_seconds=10 * 60)
+    body = src[src.index("END_WARNING_MINUTES = ") : src.index("def end_run():")]
+    ns = {"os": os, "pathlib": pathlib}
+    exec(body, ns)
+    warn_ending = cast(Callable[[int, int, set[int], str], None], ns["warn_ending"])
+    warned = set()
+
+    # A ten-minute session never crosses the 15-minute threshold.
+    warn_ending(600, 599, warned, str(tmp_path))
+    assert 15 not in warned
+    assert "minutes_left=15" not in capsys.readouterr().out
 
 
 def test_a_long_session_checkpoints_instead_of_only_saving_at_the_end():

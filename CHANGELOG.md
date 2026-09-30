@@ -18,6 +18,9 @@ All notable changes are recorded here. The format follows
   status, file count and restore state; `-n` limits rows and `--json` emits
   the same data for scripts.
 
+- The box warns every open shell and the session log once at 15 minutes and
+  once at 5 minutes before the session ends.
+
 ### Fixed
 - `kdev config set gpu tpu` lowers `hours` to 9h if it was above the TPU cap,
   preventing repeated warnings on `kdev up`.
