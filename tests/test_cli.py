@@ -576,9 +576,14 @@ def test_simultaneous_up_loser_stops_only_its_run_and_joins_winner(
     assert kaggle.cancelled == [(account, 99)]
     assert kaggle.statuses["v4"] == "RUNNING"
     assert kaggle.statuses["v5"] == "CANCEL_ACKNOWLEDGED"
-    assert "connected to v4" in out and "winner.example.com" in out
+    assert "connected to v4" in out
     assert kaggle.log_reads and all(kaggle.log_reads)
-    assert "loser" not in sshcfg.SSH_CONFIG.read_text()
+    hosts = [
+        line.split()[1]
+        for line in sshcfg.SSH_CONFIG.read_text().splitlines()
+        if line.strip().startswith("HostName ")
+    ]
+    assert hosts == ["winner.example.com"]
 
 
 def test_winning_up_waits_for_newer_clients_without_cancelling_them(
