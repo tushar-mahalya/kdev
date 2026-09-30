@@ -27,6 +27,7 @@ import httpx
 
 from . import api
 from . import config as _config
+from .errors import KdevError
 
 REMOTE = "/kaggle/working"
 
@@ -65,6 +66,9 @@ FETCHED = ".kdev/fetched"
 #: How far back to look for a version to build on. A handful of cut-short
 #: sessions in a row is already unusual; ten means something else is wrong.
 WALK_BACK = 10
+# Concurrent submissions that never reached an elected startup do not count
+# against the saved-workspace history window.
+MAX_UNCONFIRMED = 100
 #: Layers stacked when the newest version was never fully restored. Each one
 #: is a complete listing, so this bounds the plan's size.
 MAX_LAYERS = 4
@@ -74,8 +78,10 @@ def version_files(creds: api.Creds, notebook: str, label: str) -> dict[str, str]
     """name -> signed URL for one saved version, or None if there is none."""
     try:
         files = api.session_output(creds, notebook, label)
-    except api.KaggleError:
-        return None
+    except api.KaggleError as e:
+        if e.status == 404:
+            return None
+        raise  # An unreadable history is not an empty workspace.
     return {f["name"]: f["url"] for f in files}
 
 
@@ -120,10 +126,25 @@ def newest_saved(creds: api.Creds, notebook: str, latest: int) -> tuple[str, dic
     A running session's own version has none until it ends, and neither has a
     Quick Save of the source: neither is where your files are.
     """
-    for number in range(latest, max(0, latest - WALK_BACK), -1):
+    number, remaining, unconfirmed = latest, WALK_BACK, 0
+    while number > 0 and remaining > 0:
         files = version_files(creds, notebook, f"v{number}")
         if files:
-            return f"v{number}", files
+            state = _state(files)
+            if STATE in files and state is None:
+                raise KdevError(
+                    f"Could not read the saved state of v{number}.",
+                    "Retry before starting a box; its restore history could not be verified.",
+                )
+            if state and state.get("startup_confirmed") is False:
+                unconfirmed += 1
+                if unconfirmed > MAX_UNCONFIRMED:
+                    raise KdevError("Too many unconfirmed starts to safely find your saved files.")
+            else:
+                return f"v{number}", files
+        else:
+            remaining -= 1
+        number -= 1
     return "", {}
 
 
@@ -206,7 +227,7 @@ def build_plan(creds: api.Creds, notebook: str, labels: list[str]) -> dict:
 
 
 def _ssh(
-    alias: str, command: str, stdin: str | None = None, timeout: int = 120
+    alias: str, command: str, stdin: str | None = None, timeout: float = 120
 ) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=20", alias, command],
@@ -230,7 +251,40 @@ def box_state(alias: str) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def restore_on_box(alias: str, plan: dict, progress=None) -> tuple[bool, dict]:
+def confirm_start(alias: str, sid: str, timeout: int = 60) -> bool:
+    """Confirm startup only on the session selected from version-specific logs."""
+    if not sid.isdigit() or int(sid) <= 0:
+        return False
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            r = _ssh(
+                alias,
+                f"/root/.kdev/run --confirm-start {sid}",
+                timeout=min(10, max(0.1, deadline - time.monotonic())),
+            )
+            if r.returncode == 0:
+                return True
+            # Boxes started by an older kdev have no confirmation command/flag.
+            if r.returncode == 2:
+                r = _ssh(
+                    alias,
+                    f"cat {REMOTE}/{STATE}",
+                    timeout=min(10, max(0.1, deadline - time.monotonic())),
+                )
+                state = json.loads(r.stdout) if r.returncode == 0 else {}
+                if not isinstance(state, dict):
+                    return False
+                return state.get("session") == sid and "startup_confirmed" not in state
+        except (subprocess.SubprocessError, OSError, ValueError):
+            pass
+        time.sleep(min(2, max(0, deadline - time.monotonic())))
+    return False
+
+
+def restore_on_box(
+    alias: str, plan: dict, progress=None, *, session_id: str = ""
+) -> tuple[bool, dict]:
     """Start the restore on the box, then follow it until it finishes.
 
     The box runs it detached, so if this process dies -- laptop asleep, wifi
@@ -241,7 +295,9 @@ def restore_on_box(alias: str, plan: dict, progress=None) -> tuple[bool, dict]:
 
     if not wait_reachable(alias):
         return False, {"error": "ssh never became reachable"}
-    payload = json.dumps({"script": bootstrap.BOX_SCRIPT.read_text(), "plan": plan})
+    payload = json.dumps(
+        {"script": bootstrap.BOX_SCRIPT.read_text(), "plan": plan, "session": session_id}
+    )
     try:
         r = _ssh(alias, "/root/.kdev/run --receive", stdin=payload, timeout=300)
     except (subprocess.SubprocessError, OSError) as e:

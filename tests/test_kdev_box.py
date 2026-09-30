@@ -46,6 +46,31 @@ def _layer(label, files):
     return {"label": label, "files": {n: f"{label}/{n}" for n in files}}
 
 
+def test_startup_confirmation_is_bound_to_the_elected_session(env):
+    box.init_state(["v1"], session="42", run_by="alice")
+    before = json.loads((env / box.STATE).read_text())
+    assert before["startup_confirmed"] is False
+    for sid in ("43", "", "invalid", "-42"):
+        assert box.main(["--confirm-start", sid]) == 3
+        assert json.loads((env / box.STATE).read_text()) == before
+    assert box.main(["--confirm-start", "42"]) == 0
+    assert json.loads((env / box.STATE).read_text()) == {**before, "startup_confirmed": True}
+    assert box.main(["--confirm-start", "42"]) == 0
+
+
+def test_restore_receiver_checks_identity_before_writing_anything(env, monkeypatch):
+    import io
+
+    box.init_state([], session="42")
+    monkeypatch.setattr(
+        box.subprocess, "Popen", lambda *a, **kw: pytest.fail("must not launch restore")
+    )
+    payload = {"script": "should never be written", "plan": {"layers": []}, "session": "43"}
+    with pytest.raises(ValueError, match="different session"):
+        box.receive(io.StringIO(json.dumps(payload)))
+    assert not box.run_dir().exists()
+
+
 def test_a_saved_version_comes_back_whole(env):
     fetch, fb = _store({"v1/a.py": b"a", "v1/src/b.py": b"b", "v1/.git/HEAD": b"ref"})
     state = box.restore({"layers": [_layer("v1", ["a.py", "src/b.py", ".git/HEAD"])]}, fetch, fb)

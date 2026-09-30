@@ -138,6 +138,9 @@ def init_state(layers: list[str], session: str = "", run_by: str = "", notebook:
             # a different notebook must not resolve "v8" against its own.
             "notebook": notebook,
             "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            # Only the client that selected this session may confirm startup.
+            # A cancelled race loser must not shadow the winner's saved files.
+            "startup_confirmed": False,
         },
     )
 
@@ -476,6 +479,11 @@ def receive(stream=sys.stdin) -> None:
     progress up again from any machine.
     """
     payload = json.load(stream)
+    if (
+        payload.get("session")
+        and _read_json(work_dir() / STATE).get("session") != payload["session"]
+    ):
+        raise ValueError("SSH reached a different session; no restore was started.")
     run = run_dir()
     run.mkdir(parents=True, exist_ok=True)
     if payload.get("script"):
@@ -516,6 +524,12 @@ def watch(poll: float = 1.0) -> int:
 
 
 def main(argv: list[str]) -> int:
+    if len(argv) == 2 and argv[0] == "--confirm-start":
+        state = _read_json(work_dir() / STATE)
+        if not argv[1].isdigit() or state.get("session") != argv[1]:
+            return 3  # A named tunnel may still route to a concurrent box.
+        update_state(startup_confirmed=True)
+        return 0
     if argv[:1] == ["--receive"]:
         receive()
         return 0

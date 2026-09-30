@@ -29,7 +29,7 @@ def overview(run_command) -> None:
         state = {}
         if cfg.notebook:
             try:
-                state = api.session_status(cfg.profile().creds, cfg.notebook)
+                _, state = session.current_status(cfg.profile().creds, cfg.notebook)
             except api.KaggleError:
                 state = {}
         running = state.get("status") in api.LIVE_STATES

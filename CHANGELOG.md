@@ -22,6 +22,13 @@ All notable changes are recorded here. The format follows
   once at 5 minutes before the session ends.
 
 ### Fixed
+- Simultaneous `kdev up` clients elect the lowest live version, stop their
+  own duplicates with version-specific logs and confirmed cancellation, and
+  join the winner. Rejected concurrent saves can join an accepted run;
+  uncertain submissions are never automatically retried.
+- Status, logs and stop commands find an older active winner hidden by newer
+  cancelled runs. Unconfirmed startup output cannot displace its saved files,
+  and SSH session identity is checked before startup confirmation or restore.
 - `kdev config set gpu tpu` lowers `hours` to 9h if it was above the TPU cap,
   preventing repeated warnings on `kdev up`.
 - `kdev logs` hides the kernel's debugger start-up warnings; `--all` still

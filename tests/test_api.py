@@ -88,6 +88,83 @@ def test_historical_status_uses_the_requested_version(monkeypatch):
     assert seen == {"userName": "alice", "kernelSlug": "box", "versionLabel": "v7"}
 
 
+def test_get_kernel_metadata_is_pinned_to_the_selected_version(monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        api,
+        "call",
+        lambda c, method, payload: (
+            seen.append((method, payload)) or {"metadata": {"machineShape": "NvidiaTeslaP100"}}
+        ),
+    )
+    assert api.get_kernel(api.Creds("u"), "alice/box", "v7")["machineShape"] == "NvidiaTeslaP100"
+    assert seen == [("GetKernel", {"userName": "alice", "kernelSlug": "box", "versionLabel": "v7"})]
+
+
+def test_save_kernel_never_retries_an_uncertain_run_creation(monkeypatch):
+    import httpx
+
+    calls = []
+
+    def post(url, **kw):
+        calls.append(url)
+        raise httpx.ReadTimeout("response lost after accepting the run")
+
+    monkeypatch.setattr(api.httpx, "post", post)
+    with pytest.raises(api.KaggleError, match="could not reach"):
+        api.save_kernel(
+            api.Creds("u"),
+            slug="a/b",
+            title="b",
+            source="pass",
+            machine_shape=None,
+            timeout_seconds=600,
+        )
+    assert len(calls) == 1
+
+
+def test_explicit_api_rejection_preserves_http_status(monkeypatch):
+    import httpx
+
+    monkeypatch.setattr(
+        api.httpx, "post", lambda *a, **kw: httpx.Response(200, json={"error": "database conflict"})
+    )
+    with pytest.raises(api.KaggleError) as error:
+        api.call(api.Creds("u"), "SaveKernel")
+    assert error.value.status == 200
+
+
+@pytest.mark.parametrize(
+    "content_type,body",
+    [
+        ("text/event-stream", b'data: {"text":"first"}\n\ndata: END_OF_LOG\n\ndata: ignored\n'),
+        ("application/json", b'[{"text":"first"}]'),
+    ],
+)
+def test_live_and_persisted_logs_use_version_specific_request(monkeypatch, content_type, body):
+    from contextlib import contextmanager
+
+    import httpx
+
+    seen = []
+
+    @contextmanager
+    def stream(method, url, **kw):
+        seen.append(kw["json"])
+        yield httpx.Response(200, headers={"content-type": content_type}, content=body)
+
+    monkeypatch.setattr(api.httpx, "stream", stream)
+    assert list(api.stream_logs(api.Creds("u"), "alice/box", version="v7")) == ["first"]
+    assert seen == [
+        {
+            "userName": "alice",
+            "kernelSlug": "box",
+            "waitForLogsUrlSeconds": 300,
+            "versionLabel": "v7",
+        }
+    ]
+
+
 def test_a_notebook_that_has_never_run_is_a_status_not_an_error(monkeypatch):
     """Measured on a notebook made in the Kaggle editor: GetKernelSessionStatus
     answers 404 "No runs found for this kernel". `kdev up` treated that as
