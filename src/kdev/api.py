@@ -121,7 +121,7 @@ def call(
         raise KaggleError(f"{method}: Kaggle sent something that is not JSON", r.status_code) from e
     # The API returns 200 with an `error` field for validation failures.
     if isinstance(body, dict) and body.get("error"):
-        raise KaggleError(f"{method}: {body['error']}")
+        raise KaggleError(f"{method}: {body['error']}", r.status_code)
     return body
 
 
@@ -163,7 +163,8 @@ def save_kernel(
     }
     if machine_shape:
         payload["machineShape"] = machine_shape
-    return call(creds, "SaveKernel", payload)
+    # This creates a run. A lost response is not permission to create another.
+    return call(creds, "SaveKernel", payload, attempts=1)
 
 
 #: The most ListKernelSessionOutput accepts per page (it says so on a 400).
@@ -241,7 +242,12 @@ def quota(creds: Creds) -> dict:
 
 
 def stream_logs(
-    creds: Creds, slug: str, wait_seconds: int = 300, idle: float | None = None
+    creds: Creds,
+    slug: str,
+    wait_seconds: int = 300,
+    idle: float | None = None,
+    *,
+    version: str = "",
 ) -> Iterator[str]:
     """Yield log lines from a running session.
 
@@ -256,6 +262,8 @@ def stream_logs(
         "kernelSlug": kslug,
         "waitForLogsUrlSeconds": min(wait_seconds, 300),
     }
+    if version:
+        payload["versionLabel"] = version
     with httpx.stream(
         "POST",
         f"{BASE}/{KERNELS}/GetKernelSessionLogsStream",
@@ -365,10 +373,13 @@ def list_shared_kernels(creds: Creds) -> list[dict]:
     return resp.get("kernels") or []
 
 
-def get_kernel(creds: Creds, slug: str) -> dict:
+def get_kernel(creds: Creds, slug: str, version: str = "") -> dict:
     """The kernel's metadata. Note the response key is `metadata`, not `kernel`."""
     user, _, kslug = slug.partition("/")
-    resp = call(creds, "GetKernel", {"userName": user, "kernelSlug": kslug})
+    payload = {"userName": user, "kernelSlug": kslug}
+    if version:
+        payload["versionLabel"] = version
+    resp = call(creds, "GetKernel", payload)
     return resp.get("metadata") or {}
 
 

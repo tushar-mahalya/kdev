@@ -27,6 +27,10 @@ class FakeKaggle:
         self.saved: list[dict] = []
         self.cancelled: list[tuple[str, int]] = []
         self.logs: list[str] = []
+        self.version_logs: dict[str, list[str]] = {}
+        self.log_reads: list[str] = []
+        self.session_ids: dict[str, int] = {}
+        self.session_owners: dict[str, str] = {}
         self.source = ""
         self.owner_of_session = "alice"
         self.outputs = {
@@ -39,13 +43,25 @@ class FakeKaggle:
         mp(
             api,
             "session_status",
-            lambda c, s, v="": {"status": self.statuses.get(v, self.status)},
+            lambda c, s, v="": {
+                "status": self.statuses.get(
+                    v, self.status if not v or v == f"v{self.version}" else "COMPLETE"
+                )
+            },
         )
-        mp(persistence, "_state", lambda files: self.states.get(files.get(persistence.STATE, "")))
+        mp(
+            persistence,
+            "_state",
+            lambda files: (
+                self.states.get(files[persistence.STATE], {})
+                if persistence.STATE in files
+                else None
+            ),
+        )
         mp(
             api,
             "get_kernel",
-            lambda c, s: {
+            lambda c, s, v="": {
                 "id": 42,
                 "currentVersionNumber": self.version,
                 "machineShape": "NvidiaTeslaT4",
@@ -62,14 +78,24 @@ class FakeKaggle:
                 "tpuQuota": {"totalTimeAllowed": "72000s"},
             },
         )
-        mp(
-            api,
-            "save_kernel",
-            lambda c, **kw: (
-                self.saved.append(kw) or {"versionNumber": self.version + 1, "kernelId": 42}
-            ),
-        )
-        mp(api, "stream_logs", lambda c, s, wait_seconds=300, idle=None: iter(self.logs))
+
+        def save(c, **kw):
+            self.saved.append(kw)
+            self.version += 1
+            label = f"v{self.version}"
+            self.status = "RUNNING" if kw.get("run", True) else "COMPLETE"
+            self.statuses[label] = self.status
+            self.session_ids[label] = 99
+            self.session_owners[label] = c.username
+            return {"versionNumber": self.version, "kernelId": 42}
+
+        mp(api, "save_kernel", save)
+
+        def logs(c, s, wait_seconds=300, idle=None, *, version=""):
+            self.log_reads.append(version)
+            return iter(self.version_logs.get(version, self.logs))
+
+        mp(api, "stream_logs", logs)
         mp(
             api,
             "get_policy",
@@ -93,9 +119,15 @@ class FakeKaggle:
         mp(api, "share_with_group", lambda c, kid, g: {})
 
         def cancel(c, sid):
-            if c.username != self.owner_of_session:
+            label = next((v for v, i in self.session_ids.items() if i == sid), "")
+            owner = self.session_owners.get(label, self.owner_of_session)
+            if c.username != owner:
                 raise api.KaggleError("Permission 'kernelSessions.cancel' was denied", 403)
             self.cancelled.append((c.username, sid))
+            if label:
+                self.statuses[label] = "CANCEL_ACKNOWLEDGED"
+            if not label or label == f"v{self.version}":
+                self.status = "CANCEL_ACKNOWLEDGED"
             return {}
 
         mp(api, "cancel_session", cancel)
@@ -113,6 +145,10 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setattr(session, "reachable", lambda alias, timeout=10: False)
     monkeypatch.setattr(persistence, "wait_reachable", lambda alias, timeout=180: True)
     monkeypatch.setattr(persistence, "box_state", lambda alias: {})
+    monkeypatch.setattr(persistence, "confirm_start", lambda alias, sid, timeout=60: True)
+    elapsed = [1.0]
+    monkeypatch.setattr(time, "monotonic", lambda: elapsed[0])
+    monkeypatch.setattr(time, "sleep", lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds))
     return tmp_path
 
 
@@ -479,7 +515,7 @@ def test_up_starts_restores_and_reports_ready(home, kaggle, capsys, monkeypatch)
     monkeypatch.setattr(
         session,
         "restore",
-        lambda c, nb, alias, layers, note=None: (
+        lambda c, nb, alias, layers, note=None, **kw: (
             restored.append(layers) or {"restored": True, "done": 1, "total": 1}
         ),
     )
@@ -497,9 +533,259 @@ def test_up_connects_to_a_running_box_instead_of_starting_another(
 ):
     configured()
     kaggle.status = "RUNNING"
+    kaggle.logs = READY_LOG
+    monkeypatch.setattr(
+        persistence, "box_state", lambda a: {"session": "99", "startup_confirmed": True}
+    )
     monkeypatch.setattr(session, "reachable", lambda alias, timeout=10: True)
     code, out, _ = kdev(capsys, "up", "-y")
     assert code == 0 and kaggle.saved == [] and "already running" in out
+
+
+@pytest.mark.parametrize("account,other", [("alice", "bob"), ("bob", "alice"), ("alice", "alice")])
+def test_simultaneous_up_loser_stops_only_its_run_and_joins_winner(
+    home, kaggle, capsys, monkeypatch, account, other
+):
+    configured()
+    monkeypatch.setattr(
+        persistence, "box_state", lambda a: {"session": "55", "startup_confirmed": True}
+    )
+    save = api.save_kernel
+
+    def racing_save(creds, **kw):
+        # Both clients completed preflight at v3; the other saves v4 first.
+        kaggle.version = 4
+        kaggle.statuses["v4"] = "RUNNING"
+        kaggle.session_ids["v4"] = 55
+        kaggle.session_owners["v4"] = other
+        kaggle.version_logs["v4"] = [
+            f"KDEV_SESSION id=55 by={other}",
+            "KDEV_READY host=winner.example.com",
+        ]
+        kaggle.version_logs["v5"] = [f"KDEV_SESSION id=99 by={account}"]
+        return save(creds, **kw)
+
+    monkeypatch.setattr(api, "save_kernel", racing_save)
+    monkeypatch.setattr(
+        session,
+        "restore",
+        lambda *a, **kw: pytest.fail("a joining client must not restore over the winner"),
+    )
+    code, out, err = kdev(capsys, "up", "-y", "--account", account)
+    assert code == 0, err
+    assert kaggle.cancelled == [(account, 99)]
+    assert kaggle.statuses["v4"] == "RUNNING"
+    assert kaggle.statuses["v5"] == "CANCEL_ACKNOWLEDGED"
+    assert "connected to v4" in out
+    assert kaggle.log_reads and all(kaggle.log_reads)
+    hosts = [
+        line.split()[1]
+        for line in sshcfg.SSH_CONFIG.read_text().splitlines()
+        if line.strip().startswith("HostName ")
+    ]
+    assert hosts == ["winner.example.com"]
+
+
+def test_winning_up_waits_for_newer_clients_without_cancelling_them(
+    home, kaggle, capsys, monkeypatch
+):
+    configured()
+    kaggle.logs = READY_LOG
+    save, status = api.save_kernel, api.session_status
+    later = iter(["RUNNING", "CANCEL_REQUESTED", "CANCEL_ACKNOWLEDGED"])
+    checks = []
+
+    def racing_save(creds, **kw):
+        resp = save(creds, **kw)
+        kaggle.version = 5
+        return resp
+
+    def racing_status(creds, slug, version=""):
+        if version == "v5":
+            state = next(later)
+            checks.append(state)
+            return {"status": state}
+        return status(creds, slug, version)
+
+    monkeypatch.setattr(api, "save_kernel", racing_save)
+    monkeypatch.setattr(api, "session_status", racing_status)
+    monkeypatch.setattr(session, "restore", lambda *a, **kw: {"restored": True})
+    code, out, err = kdev(capsys, "up", "-y")
+    assert code == 0, err
+    assert checks == ["RUNNING", "CANCEL_REQUESTED", "CANCEL_ACKNOWLEDGED"]
+    assert not kaggle.cancelled and "ready" in out
+
+
+def test_late_visible_older_run_wins_after_our_boot_before_restore(
+    home, kaggle, capsys, monkeypatch
+):
+    configured()
+    monkeypatch.setattr(
+        persistence, "box_state", lambda a: {"session": "55", "startup_confirmed": True}
+    )
+    kaggle.version_logs["v3"] = ["KDEV_SESSION id=55 by=bob", "KDEV_READY host=winner.example.com"]
+    kaggle.session_ids["v3"], kaggle.session_owners["v3"] = 55, "bob"
+    logs = api.stream_logs
+
+    def late_logs(creds, slug, **kw):
+        if kw["version"] == "v4":
+            kaggle.statuses["v3"] = "RUNNING"
+            return iter(READY_LOG)
+        return logs(creds, slug, **kw)
+
+    monkeypatch.setattr(api, "stream_logs", late_logs)
+    monkeypatch.setattr(session, "restore", lambda *a, **kw: pytest.fail("cannot restore a loser"))
+    code, out, err = kdev(capsys, "up", "-y")
+    assert code == 0, err
+    assert kaggle.cancelled == [("alice", 99)] and "connected to v3" in out
+
+
+def test_wrong_ssh_session_never_receives_restore_or_reports_ready(
+    home, kaggle, capsys, monkeypatch
+):
+    configured()
+    kaggle.logs = READY_LOG
+    monkeypatch.setattr(persistence, "confirm_start", lambda *a, **kw: False)
+    monkeypatch.setattr(session, "restore", lambda *a, **kw: pytest.fail("wrong box"))
+    code, out, err = kdev(capsys, "up", "-y")
+    assert code == 1 and "Could not verify" in err and "✓ ready" not in out
+
+
+@pytest.mark.parametrize("state", [{"session": "99", "startup_confirmed": True}, {}])
+def test_reconnect_requires_verified_identity_even_for_confirmed_or_unreadable_state(
+    home, kaggle, capsys, monkeypatch, state
+):
+    configured()
+    kaggle.status = "RUNNING"
+    kaggle.logs = ["KDEV_SESSION id=55 by=alice"]
+    monkeypatch.setattr(session, "reachable", lambda *a, **kw: True)
+    monkeypatch.setattr(persistence, "box_state", lambda a: state)
+    code, _, err = kdev(capsys, "up", "-y")
+    assert code == 1 and "Could not verify" in err and not kaggle.saved
+
+
+def test_rejected_concurrent_save_joins_accepted_run_without_resubmitting(
+    home, kaggle, capsys, monkeypatch
+):
+    configured()
+    monkeypatch.setattr(
+        persistence, "box_state", lambda a: {"session": "55", "startup_confirmed": True}
+    )
+    attempts = []
+
+    def rejected(creds, **kw):
+        attempts.append(kw)
+        kaggle.version = 4
+        kaggle.status = kaggle.statuses["v4"] = "RUNNING"
+        kaggle.version_logs["v4"] = [
+            "KDEV_SESSION id=55 by=bob",
+            "KDEV_READY host=winner.example.com",
+        ]
+        raise api.KaggleError("SaveKernel: database conflict", 200)
+
+    monkeypatch.setattr(api, "save_kernel", rejected)
+    monkeypatch.setattr(
+        session, "restore", lambda *a, **kw: pytest.fail("joining must not restore")
+    )
+    code, out, err = kdev(capsys, "up", "-y")
+    assert code == 0, err
+    assert len(attempts) == 1 and not kaggle.cancelled and "connected to v4" in out
+
+
+def test_uncertain_submission_is_not_resubmitted_or_reported_ready(
+    home, kaggle, capsys, monkeypatch
+):
+    configured()
+
+    def lost_response(creds, **kw):
+        raise api.KaggleError("SaveKernel: connection lost", 0)
+
+    monkeypatch.setattr(api, "save_kernel", lost_response)
+    monkeypatch.setattr(session, "rejected_start", lambda *a: pytest.fail("unknown outcome"))
+    code, out, err = kdev(capsys, "up", "-y")
+    assert code == 1 and "Check for an accepted run" in err and "✓ ready" not in out
+
+
+def test_up_waits_for_hidden_winner_save_before_planning_restore(home, kaggle, capsys, monkeypatch):
+    configured()
+    kaggle.version = 5
+    kaggle.status = kaggle.statuses["v5"] = "CANCEL_ACKNOWLEDGED"
+    kaggle.statuses["v4"] = "CANCEL_REQUESTED"
+    status = api.session_status
+    saving_checks = []
+
+    def finishing(creds, slug, version=""):
+        if version == "v4":
+            saving_checks.append(version)
+            if len(saving_checks) > 1:
+                kaggle.statuses["v4"] = "COMPLETE"
+        return status(creds, slug, version)
+
+    def plan(creds, slug, latest):
+        assert kaggle.statuses["v4"] == "COMPLETE", "must finish saving before planning"
+        return ["v4"]
+
+    monkeypatch.setattr(api, "session_status", finishing)
+    monkeypatch.setattr(persistence, "plan_layers", plan)
+    monkeypatch.setattr(session, "restore", lambda *a, **kw: {"restored": True})
+    kaggle.logs = READY_LOG
+    code, _, err = kdev(capsys, "up", "-y")
+    assert code == 0, err
+    assert len(saving_checks) >= 2
+
+
+@pytest.mark.parametrize("command", ["status", "logs", "down"])
+def test_commands_find_winner_hidden_by_cancelled_latest(
+    home, kaggle, capsys, monkeypatch, command
+):
+    configured()
+    kaggle.version = 5
+    kaggle.status = kaggle.statuses["v5"] = "CANCEL_ACKNOWLEDGED"
+    kaggle.statuses["v4"] = "RUNNING"
+    kaggle.session_ids["v4"], kaggle.session_owners["v4"] = 55, "bob"
+    kaggle.version_logs["v4"] = ["KDEV_SESSION id=55 by=bob", "winner's log"]
+    kaggle.version_logs["v5"] = ["loser's log"]
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: type("R", (), {"returncode": 255})())
+    code, out, err = kdev(capsys, command)
+    assert code == 0, err
+    if command == "down":
+        assert kaggle.cancelled == [("bob", 55)]
+    elif command == "logs":
+        assert "winner's log" in out and "loser's log" not in out
+    else:
+        assert "running" in out
+    assert "v5" not in kaggle.log_reads
+
+
+def test_home_finds_winner_hidden_by_cancelled_latest(home, kaggle, capsys):
+    configured()
+    kaggle.version = 5
+    kaggle.status = kaggle.statuses["v5"] = "CANCEL_ACKNOWLEDGED"
+    kaggle.statuses["v4"] = "RUNNING"
+    code, out, err = kdev(capsys)
+    assert code == 0, err
+    assert "running" in out and "kdev down" in out
+
+
+def test_status_reports_hidden_winner_save_as_stopping(home, kaggle, capsys):
+    configured()
+    kaggle.version = 5
+    kaggle.status = kaggle.statuses["v5"] = "CANCEL_ACKNOWLEDGED"
+    kaggle.statuses["v4"] = "CANCEL_REQUESTED"
+    code, out, err = kdev(capsys, "status", "--json")
+    assert code == 0, err
+    assert json.loads(out)["stopping"] is True
+
+
+@pytest.mark.parametrize("version", [None, 0, -1, "v4", True, ""])
+def test_invalid_submission_response_cannot_restore_or_report_ready(
+    home, kaggle, capsys, monkeypatch, version
+):
+    configured()
+    monkeypatch.setattr(api, "save_kernel", lambda *a, **kw: {"versionNumber": version})
+    monkeypatch.setattr(session, "restore", lambda *a, **kw: pytest.fail("no known session"))
+    code, out, err = kdev(capsys, "up", "-y")
+    assert code == 1 and "Check and stop the new run" in err and "✓ ready" not in out
 
 
 def test_up_without_a_workspace_says_how_to_get_one(home, kaggle, capsys):
@@ -514,8 +800,6 @@ def test_up_that_never_gets_a_tunnel_says_so_and_how_to_stop_it(home, kaggle, ca
     configured()
     kaggle.logs = ["KDEV_SESSION id=99 by=alice", "KDEV_STAGE sshd", "Traceback: boom"]
     monkeypatch.setattr(persistence, "plan_layers", lambda *a: [])
-    statuses = iter(["COMPLETE", "RUNNING", "RUNNING"])
-    monkeypatch.setattr(api, "session_status", lambda c, s: {"status": next(statuses)})
     code, _, err = kdev(capsys, "up", "-y")
     assert code == 1 and "never reported a tunnel" in err
     assert "kdev down --session-id 99" in err
@@ -709,7 +993,7 @@ def test_forward_ctrl_c_exits_130(home, kaggle, capsys, monkeypatch):
 def test_a_kaggle_permission_error_has_a_hint_not_json(home, kaggle, capsys, monkeypatch):
     configured()
 
-    def denied(c, s):
+    def denied(c, s, version=""):
         raise api.KaggleError("GetKernelSessionStatus: Permission denied (HTTP 403)", 403)
 
     monkeypatch.setattr(api, "session_status", denied)
@@ -720,7 +1004,7 @@ def test_a_kaggle_permission_error_has_a_hint_not_json(home, kaggle, capsys, mon
 def test_an_unexpected_crash_is_one_line_and_leaks_nothing(home, kaggle, capsys, monkeypatch):
     configured()
 
-    def crash(c, s):
+    def crash(c, s, version=""):
         token = c.token  # noqa: F841 - a secret in a local, as a real crash would have
         raise ZeroDivisionError("boom")
 
@@ -754,7 +1038,7 @@ def test_restore_uses_the_boxs_own_notebook_not_this_machines(home, kaggle, caps
     monkeypatch.setattr(
         session,
         "restore",
-        lambda c, nb, alias, layers, note=None: (
+        lambda c, nb, alias, layers, note=None, **kw: (
             used.append((nb, layers)) or {"restored": True, "done": 1, "total": 1}
         ),
     )
@@ -821,8 +1105,18 @@ def test_up_just_starts_when_the_running_session_ends_while_it_looks(
     kaggle.logs = READY_LOG
     monkeypatch.setattr(persistence, "plan_layers", lambda *a: [])
     statuses = iter(["RUNNING", "COMPLETE"])
-    monkeypatch.setattr(api, "session_status", lambda c, s: {"status": next(statuses, "RUNNING")})
-    monkeypatch.setattr(session, "find_live_box", lambda *a: "")
+    monkeypatch.setattr(
+        api,
+        "session_status",
+        lambda c, s, v="": {
+            "status": "RUNNING"
+            if v == "v4"
+            else next(statuses, "COMPLETE")
+            if v == "v3"
+            else "COMPLETE"
+        },
+    )
+    monkeypatch.setattr(session, "find_live_box", lambda *a, **k: "")
     stopped = []
     monkeypatch.setattr("kdev.commands.box._stop_and_wait", lambda *a: stopped.append(a))
     code, _, err = kdev(capsys, "up", "-y")
@@ -951,7 +1245,11 @@ def test_up_starts_a_notebook_that_has_never_run_and_keeps_its_title(
     monkeypatch.setattr(
         api,
         "get_kernel",
-        lambda c, s: {"id": 42, "title": "v0.1.0_testing", "currentVersionNumber": None},
+        lambda c, s, v="": {
+            "id": 42,
+            "title": "v0.1.0_testing",
+            "currentVersionNumber": kaggle.version if kaggle.saved else None,
+        },
     )
     code, out, err = kdev(capsys, "up", "-y")
     assert code == 0, err

@@ -157,6 +157,165 @@ def test_a_brand_new_notebook_has_nothing_to_restore(monkeypatch):
     assert w.plan_layers(api.Creds("u"), "a/b", 3) == []
 
 
+def test_unconfirmed_race_losers_cannot_replace_the_saved_winner(monkeypatch):
+    from kdev import persistence as w
+
+    table = {
+        f"v{n}": ({w.STATE: f"state{n}"}, {"startup_confirmed": False, "restored": True})
+        for n in range(2, 25)
+    }
+    table["v1"] = (
+        {"important.py": "url", w.STATE: "state1"},
+        {"startup_confirmed": True, "restored": True},
+    )
+    w = _versions(monkeypatch, table)
+    assert w.plan_layers(api.Creds("u"), "a/b", 24) == ["v1"]
+    # Explicit recovery still lists every loser's output.
+    assert w.version_files(api.Creds("u"), "a/b", "v24") == table["v24"][0]
+
+
+def test_confirmed_empty_workspace_does_not_resurrect_deleted_files(monkeypatch):
+    from kdev import persistence as w
+
+    w = _versions(
+        monkeypatch,
+        {
+            "v2": ({w.STATE: "state2"}, {"startup_confirmed": True, "restored": True}),
+            "v1": ({"deleted.py": "url"}, None),
+        },
+    )
+    assert w.plan_layers(api.Creds("u"), "a/b", 2) == ["v2"]
+
+
+def test_confirmed_no_restore_session_keeps_its_history_layers(monkeypatch):
+    from kdev import persistence as w
+
+    w = _versions(
+        monkeypatch,
+        {
+            "v2": (
+                {w.STATE: "state2"},
+                {"startup_confirmed": True, "restored": False, "layers": ["v1"]},
+            )
+        },
+    )
+    assert w.plan_layers(api.Creds("u"), "a/b", 2) == ["v1", "v2"]
+
+
+def test_unreadable_saved_state_fails_before_workspace_history_is_guessed(monkeypatch):
+    from kdev import persistence as w
+    from kdev.errors import KdevError
+
+    w = _versions(monkeypatch, {"v2": ({w.STATE: "bad-url"}, None)})
+    with pytest.raises(KdevError, match="Could not read the saved state"):
+        w.plan_layers(api.Creds("u"), "a/b", 2)
+
+
+@pytest.mark.parametrize("status", [0, 401, 403, 429, 500])
+def test_failed_output_lookup_is_not_treated_as_empty_history(monkeypatch, status):
+    from kdev import persistence as w
+
+    def failed(*a):
+        raise api.KaggleError("output lookup failed", status)
+
+    monkeypatch.setattr(api, "session_output", failed)
+    with pytest.raises(api.KaggleError, match="output lookup failed"):
+        w.newest_saved(api.Creds("u"), "a/b", 3)
+
+
+def test_absent_output_version_can_still_be_skipped(monkeypatch):
+    from kdev import persistence as w
+
+    def absent(*a):
+        raise api.KaggleError("no output", 404)
+
+    monkeypatch.setattr(api, "session_output", absent)
+    assert w.newest_saved(api.Creds("u"), "a/b", 3) == ("", {})
+
+
+def test_unconfirmed_history_limit_fails_closed_instead_of_restoring_empty(monkeypatch):
+    from kdev import persistence as w
+    from kdev.errors import KdevError
+
+    table = {
+        f"v{n}": ({w.STATE: f"state{n}"}, {"startup_confirmed": False})
+        for n in range(1, w.MAX_UNCONFIRMED + 2)
+    }
+    w = _versions(monkeypatch, table)
+    with pytest.raises(KdevError, match="Too many unconfirmed"):
+        w.plan_layers(api.Creds("u"), "a/b", w.MAX_UNCONFIRMED + 1)
+
+
+@pytest.mark.parametrize("sid", ["", "not-a-number", "0", "-1"])
+def test_invalid_session_id_cannot_confirm_startup(monkeypatch, sid):
+    from kdev import persistence as w
+
+    monkeypatch.setattr(w, "_ssh", lambda *a, **kw: pytest.fail("invalid id"))
+    assert not w.confirm_start("box", sid)
+
+
+@pytest.mark.parametrize(
+    "state,expected",
+    [
+        ({"session": "42"}, True),
+        ({"session": "43"}, False),
+        ({"session": "42", "startup_confirmed": False}, False),
+    ],
+)
+def test_legacy_startup_confirmation_still_requires_matching_session(monkeypatch, state, expected):
+    import json
+    import subprocess
+
+    from kdev import persistence as w
+
+    def ssh(alias, command, **kw):
+        return (
+            subprocess.CompletedProcess([], 0, json.dumps(state), "")
+            if command.startswith("cat ")
+            else subprocess.CompletedProcess([], 2, "", "")
+        )
+
+    monkeypatch.setattr(w, "_ssh", ssh)
+    assert w.confirm_start("box", "42") is expected
+
+
+def test_startup_confirmation_retries_wrong_backend_until_correct_session(monkeypatch):
+    import subprocess
+    import time
+
+    from kdev import persistence as w
+
+    elapsed = [0.0]
+    calls = []
+    monkeypatch.setattr(time, "monotonic", lambda: elapsed[0])
+    monkeypatch.setattr(time, "sleep", lambda delay: elapsed.__setitem__(0, elapsed[0] + delay))
+
+    def ssh(alias, command, **kw):
+        calls.append((command, kw["timeout"]))
+        return subprocess.CompletedProcess([], 3 if len(calls) == 1 else 0, "", "")
+
+    monkeypatch.setattr(w, "_ssh", ssh)
+    assert w.confirm_start("box", "42", timeout=3)
+    assert calls == [
+        ("/root/.kdev/run --confirm-start 42", 3),
+        ("/root/.kdev/run --confirm-start 42", 1),
+    ]
+
+
+def test_wrong_backend_timeout_cannot_confirm_startup(monkeypatch):
+    import subprocess
+    import time
+
+    from kdev import persistence as w
+
+    elapsed = [0.0]
+    monkeypatch.setattr(time, "monotonic", lambda: elapsed[0])
+    monkeypatch.setattr(time, "sleep", lambda delay: elapsed.__setitem__(0, elapsed[0] + delay))
+    monkeypatch.setattr(w, "_ssh", lambda *a, **kw: subprocess.CompletedProcess([], 3, "", ""))
+    assert not w.confirm_start("box", "42", timeout=3)
+    assert elapsed[0] == 3
+
+
 def test_background_ssh_never_asks_for_a_tty(monkeypatch):
     """The kdev ssh block says RequestTTY yes, so without -T every background
     probe took over the terminal (raw mode) and smeared the live board."""
@@ -186,7 +345,8 @@ def test_up_waits_for_a_cancelled_session_to_finish_saving(monkeypatch):
     seen = iter(["CANCEL_REQUESTED", "CANCEL_REQUESTED", "CANCEL_ACKNOWLEDGED"])
     calls = []
 
-    def status(creds, slug):
+    def status(creds, slug, version=""):
+        assert version == ""
         calls.append(1)
         return {"status": next(seen)}
 

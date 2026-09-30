@@ -62,16 +62,17 @@ def up(
 
     # A box already running is the one you left: from this account or another,
     # this machine or another. Connect to it rather than start a second.
-    if api.session_status(prof.creds, target).get("status") in api.LIVE_STATES:
+    live_version, current = session.current_status(prof.creds, target)
+    if current.get("status") in api.LIVE_STATES:
         live = ""
         if not replace:
             with ui.spinner("a session is running; checking it is your box…"):
-                live = session.find_live_box(cfg, prof.creds, target)
+                live = session.find_live_box(cfg, prof.creds, target, version=live_version)
         if live == session.STOPPING:
             # `kdev down` a moment ago: wait for its save, then start afresh.
             # Connecting would find no tunnel; planning now would miss the save.
             with ui.spinner("your last box is still saving your files…"):
-                session.wait_saved(prof.creds, target, running_too=True)
+                session.wait_saved(prof.creds, target, running_too=True, version=live_version)
             ui.ok("the last box finished saving")
             must_stop = False
         elif live:
@@ -79,10 +80,22 @@ def up(
             if choice == "cancel":
                 return
             if choice == "connect":
-                _connect(cfg, prof, target, live, cf, hours, gpu, name, open_with, interactive)
+                _connect(
+                    cfg,
+                    prof,
+                    target,
+                    live,
+                    cf,
+                    hours,
+                    gpu,
+                    name,
+                    open_with,
+                    interactive,
+                    version=live_version,
+                )
                 return
             must_stop = True  # "replace" was chosen
-        elif api.session_status(prof.creds, target).get("status") in api.LIVE_STATES:
+        elif api.session_status(prof.creds, target, live_version).get("status") in api.LIVE_STATES:
             if not replace:
                 ui.warn(f"{target} has a session kdev cannot reach (started in the Kaggle editor?)")
                 if not (interactive and ui.confirm("Replace it with a kdev box?", default=False)):
@@ -96,7 +109,7 @@ def up(
         # restore. The running version has no saved output yet, so planning now
         # would build on the one before it and drop everything done since.
         if must_stop:
-            _stop_and_wait(cfg, prof.creds, target)
+            _stop_and_wait(cfg, prof.creds, target, version=live_version)
 
     with ui.spinner("reading the notebook…"):
         verdict, existing, backup = safety.check(prof.creds, target)
@@ -108,7 +121,12 @@ def up(
     # hold, or a deliberately empty session would look complete and every
     # later `kdev up` would build on it alone, dropping the history.
     with ui.spinner("finding where you left off…"):
-        session.wait_saved(prof.creds, target)
+        session.wait_saved(
+            prof.creds,
+            target,
+            running_too=current.get("status") == api.SAVING,
+            version=live_version,
+        )
         try:
             meta = api.get_kernel(prof.creds, target)
         except api.KaggleError:
@@ -162,29 +180,85 @@ def up(
     host, reachable = None, False
     seen: dict = {}
     restored: dict = {}
+    joined = False
+    winner = ""
     with ui.Stages(stages, head=f"{name} · {label} · {hours:g}h") as board:
         board.advance("submit")
-        resp = api.save_kernel(
-            prof.creds,
-            slug=target,
-            title=title,
-            source=source,
-            machine_shape=api.SHAPES[gpu],
-            timeout_seconds=hold,
-            kernel_type=kernel_type,
-        )
-        board.note(f"version {resp.get('versionNumber')}")
+        try:
+            resp = api.save_kernel(
+                prof.creds,
+                slug=target,
+                title=title,
+                source=source,
+                machine_shape=api.SHAPES[gpu],
+                timeout_seconds=hold,
+                kernel_type=kernel_type,
+            )
+        except api.KaggleError as e:
+            if e.status != 200:
+                raise KdevError(
+                    str(e),
+                    f"Check for an accepted run at {nb.notebook_url(target)} before retrying.",
+                ) from e
+            winner = session.rejected_start(prof.creds, target)
+            if not winner:
+                raise
+            joined = True
+            board.note(f"Kaggle rejected our submission; joining {winner}")
+        else:
+            board.note(f"version {resp.get('versionNumber')}")
+            try:
+                created = session.version_number(resp.get("versionNumber"))
+                if created == 0:
+                    raise KdevError("Kaggle did not return a valid notebook version.")
+            except KdevError as e:
+                raise KdevError(
+                    e.message, f"Check and stop the new run at {nb.notebook_url(target)}."
+                ) from e
+            winner = session.resolve_start(prof.creds, target, created, latest)
+            joined = winner != f"v{created}"
         board.advance("queue")
-        host = session.await_ready(prof.creds, target, board, seen=seen)
+        host = session.await_ready(prof.creds, target, board, seen=seen, version=winner)
+        if host and not joined:
+            # Status may have become visible only while our own box booted.
+            winner = session.resolve_start(prof.creds, target, created, latest)
+            joined = winner != f"v{created}"
+            if joined:
+                seen.clear()
+                host = session.await_ready(prof.creds, target, board, seen=seen, version=winner)
+        if joined:
+            board.note(f"using the session another machine started: {winner}")
         if host:
+            board.note("waiting for concurrent starts to stop…")
+            session.wait_single(prof.creds, target, winner)
             sshcfg.write(cfg.ssh_host_alias, host, cloudflared_path=cf)
+            board.note("waiting for the selected session's ssh…")
+            reachable = persistence.wait_reachable(cfg.ssh_host_alias)
+            if not reachable or not persistence.confirm_start(
+                cfg.ssh_host_alias, str(seen.get("session", ""))
+            ):
+                raise KdevError(
+                    f"Could not verify the SSH connection belongs to {winner}.",
+                    "No files were restored. Retry kdev up; use kdev logs to inspect the box.",
+                )
             board.advance("restore")
-            if layers and restore:
+            if layers and restore and not joined:
                 restored = session.restore(
-                    prof.creds, target, cfg.ssh_host_alias, layers, board.note
+                    prof.creds,
+                    target,
+                    cfg.ssh_host_alias,
+                    layers,
+                    board.note,
+                    session_id=str(seen["session"]),
                 )
             else:
-                board.note("nothing saved yet" if not layers else "skipped (--no-restore)")
+                board.note(
+                    "already running"
+                    if joined
+                    else "nothing saved yet"
+                    if not layers
+                    else "skipped (--no-restore)"
+                )
             board.advance("ready")
             # The log says the tunnel is up a moment before Cloudflare's edge
             # routes it; ready has to mean an ssh would work right now.
@@ -199,7 +273,23 @@ def up(
             board.fail("no tunnel was announced")
 
     if not host:
-        _explain_no_tunnel(prof.creds, target, seen)
+        _explain_no_tunnel(prof.creds, target, seen, version=winner)
+    if joined:
+        ui.ok(f"connected to {winner}; only one session is running")
+        _connect(
+            cfg,
+            prof,
+            target,
+            host,
+            cf,
+            hours,
+            gpu,
+            seen.get("by") or name,
+            open_with,
+            interactive,
+            version=winner,
+        )
+        return
     # Only what was answered at a prompt is remembered, field by field: an
     # explicit --gpu for this run must not ride along into the defaults just
     # because the session length happened to be asked for.
@@ -272,7 +362,12 @@ def _cloudflared(interactive: bool):
 
 
 def _stop_and_wait(
-    cfg: config.Config, creds: api.Creds, target: str, timeout: int = session.SAVE_TIMEOUT
+    cfg: config.Config,
+    creds: api.Creds,
+    target: str,
+    timeout: int = session.SAVE_TIMEOUT,
+    *,
+    version: str = "",
 ) -> None:
     with ui.spinner("stopping the running box and waiting for it to save…"):
         stopped = False
@@ -290,20 +385,13 @@ def _stop_and_wait(
             )
             stopped = r.returncode == 0
         if not stopped:
-            sid, runner = session.live_session_id(creds, target)
+            sid, runner = session.live_session_id(creds, target, version=version)
             if not sid or not session.cancel_as_owner(cfg, int(sid), runner):
                 raise KdevError(
                     "Could not stop the running box from here.",
                     f"Stop it at {nb.notebook_url(target)}, then run kdev up again.",
                 )
-        deadline = time.time() + timeout
-        while api.session_status(creds, target).get("status") in api.LIVE_STATES:
-            if time.time() > deadline:
-                raise KdevError(
-                    "The old box is taking too long to stop.",
-                    "Check it with kdev status, then run kdev up again.",
-                )
-            time.sleep(5)
+        session.wait_saved(creds, target, running_too=True, timeout=timeout, version=version)
     ui.ok("stopped the old box; its files are saved")
 
 
@@ -322,7 +410,11 @@ def _running_choice(target: str, interactive: bool) -> str:
     )
 
 
-def _connect(cfg, prof, target, host, cf, hours, gpu, account, open_with, interactive) -> None:
+def _connect(
+    cfg, prof, target, host, cf, hours, gpu, account, open_with, interactive, *, version: str = ""
+) -> None:
+    if version:
+        session.wait_single(prof.creds, target, version)
     sshcfg.write(cfg.ssh_host_alias, host, cloudflared_path=cf)
     with ui.spinner("waiting for ssh…"):
         ok = persistence.wait_reachable(cfg.ssh_host_alias, timeout=60)
@@ -333,9 +425,19 @@ def _connect(cfg, prof, target, host, cf, hours, gpu, account, open_with, intera
             "the box yet; it is added the first time it runs `kdev up`.",
         )
     state = persistence.box_state(cfg.ssh_host_alias)
+    if version:
+        sid, _ = session.live_session_id(prof.creds, target, version=version)
+        if not sid or state.get("session") != sid:
+            raise KdevError("Could not verify the running session's SSH connection.")
+        if state.get("startup_confirmed") is False and not persistence.confirm_start(
+            cfg.ssh_host_alias, sid
+        ):
+            raise KdevError("Could not confirm the running session's startup.")
     if state and not state.get("restored"):
         ui.warn("That session never finished restoring your files", "Finish it: kdev restore")
-    hours, label, account = session.describe_running(cfg, prof.creds, target, hours, gpu, account)
+    hours, label, account = session.describe_running(
+        cfg, prof.creds, target, hours, gpu, account, version=version
+    )
     ui.blank()
     ui.ready_card(cfg.ssh_host_alias, host, hours, label, account)
     _open(cfg.ssh_host_alias, open_with, interactive)
@@ -357,9 +459,9 @@ def _open(alias: str, how: str | None, interactive: bool) -> None:
         ui.hint("Back on your machine. The box is still running: kdev down stops it.")
 
 
-def _explain_no_tunnel(creds: api.Creds, target: str, seen: dict) -> NoReturn:
+def _explain_no_tunnel(creds: api.Creds, target: str, seen: dict, *, version: str = "") -> NoReturn:
     try:
-        state = api.session_status(creds, target)
+        state = api.session_status(creds, target, version)
     except api.KaggleError:
         state = {}
     hint = "See what it did: kdev logs"
@@ -433,12 +535,17 @@ def down(
     # quota: find out, and cancel it as whoever started it.
     target = need_notebook(cfg)
     creds = cfg.profile(account).creds
-    status = api.session_status(creds, target).get("status", "?")
+    version, current = session.current_status(creds, target)
+    status = current.get("status", "?")
+    if status == api.SAVING:
+        session.box_gone(cfg)
+        ui.ok("already stopping; Kaggle is saving /kaggle/working")
+        return
     if status not in api.LIVE_STATES:
         session.box_gone(cfg)
         ui.ok(f"nothing running ({status.lower()}); your files are in the saved version")
         return
-    if session.stopping(creds, target):
+    if session.stopping(creds, target, version=version):
         session.box_gone(cfg)
         ui.ok(
             "already stopping; Kaggle is saving /kaggle/working",
@@ -446,7 +553,7 @@ def down(
         )
         return
     with ui.spinner("the box does not answer; finding its session id…"):
-        sid, runner = session.live_session_id(creds, target)
+        sid, runner = session.live_session_id(creds, target, version=version)
     if not sid:
         raise KdevError(
             "The box is still running but does not answer, and its id is not in the log.",
@@ -613,14 +720,17 @@ def status(
     target = need_notebook(cfg)
     creds = cfg.profile(account).creds
     with ui.spinner("checking…"):
+        version = ""
         try:
-            state = api.session_status(creds, target)
+            version, state = session.current_status(creds, target)
         except api.KaggleError as e:
             state = {"status": "UNKNOWN", "failureMessage": str(e)}
         reachable = session.reachable(cfg.ssh_host_alias)
         box = persistence.box_state(cfg.ssh_host_alias) if reachable else {}
         running = state.get("status") in api.LIVE_STATES
-        saving = running and not reachable and session.stopping(creds, target)
+        saving = state.get("status") == api.SAVING or (
+            running and not reachable and session.stopping(creds, target, version=version)
+        )
     info = {
         "notebook": target,
         "status": state.get("status", "?"),
@@ -782,7 +892,9 @@ def logs(
     cfg = config.load()
     target = need_notebook(cfg)
     shown = 0
-    for line in api.stream_logs(cfg.profile(account).creds, target):
+    creds = cfg.profile(account).creds
+    version, _ = session.current_status(creds, target)
+    for line in api.stream_logs(creds, target, version=version):
         text = line.rstrip()
         if not everything and text.startswith(("KDEV_ALIVE", "0.00s - ")):
             continue
@@ -863,6 +975,7 @@ def restore_cmd(
             alias,
             layers,
             lambda text: spin.update(Text(f"restoring… {text}", style="kdev.muted")),
+            session_id=str(state.get("session") or ""),
         )
     session.report_restore(result)
     if not result.get("restored"):

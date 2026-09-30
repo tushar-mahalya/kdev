@@ -451,10 +451,15 @@ kdev logs          # what the box itself is saying
   VS Code on every other machine. Only a box holding the workspace's tunnel
   credentials can answer on that hostname, and anyone holding those can
   already edit the notebook that builds the box.
-- **One box at a time.** kdev is built for one person on one machine at a
-  time; switching machines is fine. Two machines running `kdev up` at the same
-  moment start two boxes behind one hostname, and only the one that stops last
-  carries forward. Start from one machine, then connect from the other.
+- **Simultaneous starts converge on one box.** If several machines run
+  `kdev up` together, the lowest live notebook version wins. Each losing
+  client stops its own run as the account that started it, waits for the
+  cancellation to finish, then connects to the winner. Status, logs and stop
+  commands find that winner even when a cancelled version is newer. Startup
+  verifies the SSH session before restoring files; cancelled contenders do
+  not replace the winner's saved workspace. Their output remains available
+  through `kdev restore --from vN`. If Kaggle cannot confirm a cancellation,
+  kdev reports the run to stop and does not declare the shared tunnel ready.
 - **Metadata in the last 30 s.** After a hard kill, symlinks, empty folders and
   executable bits created in the final 30 seconds are gone. File contents never
   are.
@@ -502,7 +507,7 @@ git clone https://github.com/tushar-mahalya/kdev && cd kdev
 uv sync
 uv run pre-commit install        # hooks on commit, tests on push
 uv run basedpyright              # basic-mode type check, also on every commit
-uv run pytest                    # 199 tests, no network needed
+uv run pytest                    # unit and regression tests, no network needed
 uv run pytest --cov              # the same suite with a local coverage report
 uv run kdev -v …                 # the working tree, with API logging
 ```
