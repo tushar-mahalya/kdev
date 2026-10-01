@@ -486,6 +486,7 @@ def down(
 ) -> None:
     """Stop the box. Your files are saved however it stops."""
     cfg = config.load()
+    ui.header("down", terminal_only=True)
     session.ssh_ready(cfg)
 
     if session_id:
@@ -581,6 +582,8 @@ def ssh(ctx: typer.Context) -> None:
     session.ssh_ready(cfg)
     if not sshcfg.has_block():
         raise KdevError("No box hostname known yet.", "Start or find it with: kdev up")
+    if ui.interactive() and not ctx.args:
+        ui.header("ssh", terminal_only=True)
     # ssh's own exit code is this command's, so scripts can wrap it.
     raise typer.Exit(subprocess.run(["ssh", cfg.ssh_host_alias, *ctx.args]).returncode)
 
@@ -652,6 +655,7 @@ def forward(
 ) -> None:
     """Reach services on the box through localhost."""
     cfg = config.load()
+    ui.header("forward", terminal_only=True)
     if not cfg.ssh_host_alias:
         raise KdevError("No ssh alias configured.", "Run: kdev setup")
     session.ssh_ready(cfg)
@@ -716,6 +720,8 @@ def status(
 ) -> None:
     """The box: running or not, who started it, when it ends, your files."""
     cfg = config.load()
+    if not as_json:
+        ui.header("status", terminal_only=True)
     session.ssh_ready(cfg)
     target = need_notebook(cfg)
     creds = cfg.profile(account).creds
@@ -831,6 +837,8 @@ def history(
 ) -> None:
     """Past saved sessions: who ran them, how they ended and what they saved."""
     cfg = config.load()
+    if not as_json:
+        ui.header("history", terminal_only=True)
     target = need_notebook(cfg)
     creds = cfg.profile(account).creds
     with ui.spinner("reading session history…"):
@@ -924,6 +932,7 @@ def restore_cmd(
     overwritten, so this is not a rollback.
     """
     cfg = config.load()
+    ui.header("restore", terminal_only=True)
     session.ssh_ready(cfg)
     alias = cfg.ssh_host_alias
     if from_backup:
@@ -992,6 +1001,7 @@ def backup() -> None:
     open in Finder, and push back with `kdev restore --from-backup`.
     """
     cfg = config.load()
+    ui.header("backup", terminal_only=True)
     session.ssh_ready(cfg)
     with ui.spinner("copying the box to this machine…"):
         ok, err = persistence.pull(cfg.ssh_host_alias)

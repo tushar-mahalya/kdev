@@ -20,6 +20,7 @@ def main(ctx: typer.Context) -> None:
     if ctx.invoked_subcommand:
         return
     cfg = config.load()
+    ui.header("tunnel", terminal_only=True)
     from rich.text import Text
 
     if cfg.tunnel_credentials:
@@ -74,5 +75,6 @@ def setup(
 ) -> None:
     """Create the named tunnel and its DNS record (opens a browser once)."""
     cfg = config.load()
+    ui.header("tunnel setup", terminal_only=True)
     if wizard.setup_named_tunnel(cfg, hostname=hostname, force=force):
         config.save(cfg)

@@ -65,24 +65,26 @@ def root(
 
 
 # The box -------------------------------------------------------------------
-app.command("up")(box.up)
-app.command("down")(box.down)
-app.command("ssh", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})(
-    box.ssh
-)
-app.command("forward")(box.forward)
-app.command("status")(box.status)
-app.command("history")(box.history)
-app.command("logs")(box.logs)
-app.command("restore")(box.restore_cmd)
-app.command("backup")(box.backup)
+app.command("up", rich_help_panel="Box")(box.up)
+app.command("down", rich_help_panel="Box")(box.down)
+app.command(
+    "ssh",
+    rich_help_panel="Box",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)(box.ssh)
+app.command("forward", rich_help_panel="Box")(box.forward)
+app.command("status", rich_help_panel="Box")(box.status)
+app.command("history", rich_help_panel="Files & history")(box.history)
+app.command("logs", rich_help_panel="Box")(box.logs)
+app.command("restore", rich_help_panel="Files & history")(box.restore_cmd)
+app.command("backup", rich_help_panel="Files & history")(box.backup)
 # Accounts, workspace, settings, tunnel ---------------------------------------
-app.add_typer(account.app, name="account")
-app.add_typer(workspace.app, name="workspace")
-app.add_typer(settings.app, name="config")
-app.add_typer(tunnel_cmd.app, name="tunnel")
-app.command("doctor")(doctor_cmd.doctor)
-app.command("setup")(home.setup)
+app.add_typer(account.app, name="account", rich_help_panel="Accounts & workspace")
+app.add_typer(workspace.app, name="workspace", rich_help_panel="Accounts & workspace")
+app.add_typer(settings.app, name="config", rich_help_panel="Setup")
+app.add_typer(tunnel_cmd.app, name="tunnel", rich_help_panel="Setup")
+app.command("doctor", rich_help_panel="Setup")(doctor_cmd.doctor)
+app.command("setup", rich_help_panel="Setup")(home.setup)
 # Muscle memory, not advertised ------------------------------------------------
 app.command("ps", hidden=True)(box.status)
 app.command("login", hidden=True)(account.add)
@@ -116,7 +118,8 @@ def main() -> None:
         # Not standalone, so errors reach the handlers below -- which means a
         # command's `typer.Exit(n)` comes back as a return value, not an exit.
         # Pass it on, or every non-zero status (doctor, ssh, restore) is lost.
-        code = app(prog_name="kdev", standalone_mode=False)
+        with ui.command_header_scope():
+            code = app(prog_name="kdev", standalone_mode=False)
         if isinstance(code, int) and code:
             sys.exit(code)
     except Cancelled:

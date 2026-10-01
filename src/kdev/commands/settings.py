@@ -127,6 +127,7 @@ def main(ctx: typer.Context) -> None:
     if ctx.invoked_subcommand:
         return
     cfg = config.load()
+    ui.header("config", terminal_only=True)
     t = ui.table(
         [("setting", "left"), ("value", "left"), ("what it is", "left")],
         [
@@ -152,6 +153,7 @@ def set_(
 ) -> None:
     """Change one setting."""
     cfg = config.load()
+    ui.header("config set", terminal_only=True)
     setting = _key(name)
     setattr(cfg, setting.attr, setting.parse(value, cfg))
     config.save(cfg)
@@ -162,6 +164,7 @@ def set_(
 def unset(name: str = typer.Argument(..., help="The setting to reset.")) -> None:
     """Put one setting back to its default."""
     cfg = config.load()
+    ui.header("config unset", terminal_only=True)
     setting = _key(name)
     setattr(cfg, setting.attr, config.Config.__dataclass_fields__[setting.attr].default)
     config.save(cfg)

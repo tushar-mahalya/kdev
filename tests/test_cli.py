@@ -12,8 +12,9 @@ import time
 from datetime import datetime
 
 import pytest
+from rich.text import Text
 
-from kdev import api, auth, cli, config, persistence, session, sshcfg
+from kdev import api, auth, cli, config, persistence, session, sshcfg, ui
 
 
 class FakeKaggle:
@@ -197,6 +198,151 @@ def kdev(capsys, *argv) -> tuple[int, str, str]:
 def test_version(home, capsys):
     code, out, _ = kdev(capsys, "--version")
     assert code == 0 and out.startswith("kdev ")
+
+
+def test_help_groups_commands_and_keeps_aliases_hidden(home, capsys):
+    code, out, err = kdev(capsys, "--help")
+    assert code == 0, err
+    assert all(
+        title in out for title in ("Box", "Files & history", "Accounts & workspace", "Setup")
+    )
+    assert all(
+        command in out
+        for command in (
+            "up",
+            "down",
+            "ssh",
+            "forward",
+            "status",
+            "history",
+            "logs",
+            "restore",
+            "backup",
+            "account",
+            "workspace",
+            "config",
+            "tunnel",
+            "doctor",
+            "setup",
+        )
+    )
+    from typer.core import TyperGroup
+    from typer.main import get_command
+
+    root = get_command(cli.app)
+    assert isinstance(root, TyperGroup)
+    commands = root.commands
+    assert commands["ps"].hidden and commands["login"].hidden
+
+
+@pytest.fixture
+def colour_terminal(monkeypatch):
+    from rich.console import Console
+
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm")
+    monkeypatch.setattr(
+        ui,
+        "console",
+        Console(force_terminal=True, color_system="truecolor", width=100, theme=ui.THEME),
+    )
+    monkeypatch.setattr(ui, "interactive", lambda: False)
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        (),
+        ("status",),
+        ("ps",),
+        ("history",),
+        ("account",),
+        ("account", "use", "bob"),
+        ("config",),
+        ("config", "set", "gpu", "t4"),
+        ("config", "unset", "gpu"),
+        ("workspace",),
+        ("workspace", "files"),
+    ],
+)
+def test_commands_show_the_logo_once(home, kaggle, capsys, colour_terminal, argv):
+    configured()
+    code, out, err = kdev(capsys, *argv)
+    assert code == 0, err
+    assert Text.from_ansi(out).plain.count(ui._logo().plain.splitlines()[0].strip()) == 1
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ("status", "--json"),
+        ("ps", "--json"),
+        ("history", "--json"),
+        ("account", "--json"),
+        ("workspace", "files", "--json"),
+    ],
+)
+def test_json_stays_clean_in_a_colour_terminal(home, kaggle, capsys, colour_terminal, argv):
+    configured()
+    code, out, err = kdev(capsys, *argv)
+    assert code == 0, err
+    assert json.loads(out)
+    assert "\x1b" not in out
+
+
+def test_raw_outputs_skip_the_logo(home, kaggle, capsys, colour_terminal):
+    configured()
+    code, out, _ = kdev(capsys, "--version")
+    assert code == 0 and out == f"kdev {cli.__version__}\n"
+    kaggle.logs = ["one", "two"]
+    code, out, _ = kdev(capsys, "logs", "--lines", "2")
+    assert code == 0 and out == "one\ntwo\n"
+
+
+def test_menu_dispatch_does_not_repeat_the_logo(home, kaggle, capsys, colour_terminal, monkeypatch):
+    configured()
+    kaggle.status = "RUNNING"
+    monkeypatch.setattr(ui, "interactive", lambda: True)
+    monkeypatch.setattr(ui, "choose", lambda *args, **kwargs: "status")
+    code, out, err = kdev(capsys)
+    assert code == 0, err
+    text = Text.from_ansi(out).plain
+    assert text.count(ui._logo().plain.splitlines()[0].strip()) == 1
+    assert "kdev · status" in text
+
+
+@pytest.mark.parametrize("remote_args", [(), ("-T", "printf hello")])
+def test_ssh_brands_the_shell_and_preserves_remote_command_output(
+    home, capsys, colour_terminal, monkeypatch, remote_args
+):
+    import subprocess
+
+    configured()
+    monkeypatch.setattr(ui, "interactive", lambda: True)
+    monkeypatch.setattr(sshcfg, "has_block", lambda: True)
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        print("remote output")
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    code, out, err = kdev(capsys, "ssh", "--", *remote_args)
+    assert code == 0, err
+    assert calls == [["ssh", "kaggle", *remote_args]]
+    if remote_args:
+        assert out == "remote output\n"
+    else:
+        assert Text.from_ansi(out).plain.count(ui._logo().plain.splitlines()[0].strip()) == 1
+
+
+@pytest.mark.parametrize("argv", [("config",), ("status",), ("account",), ("workspace", "files")])
+def test_piped_commands_have_no_extra_header(home, kaggle, capsys, argv):
+    configured()
+    code, out, err = kdev(capsys, *argv)
+    assert code == 0, err
+    assert f"v{cli.__version__}" not in out
 
 
 def test_an_unknown_command_is_a_usage_error(home, capsys):

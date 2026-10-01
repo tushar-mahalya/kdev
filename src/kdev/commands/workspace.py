@@ -36,6 +36,7 @@ def main(
     if ctx.invoked_subcommand:
         return
     cfg = config.load()
+    ui.header("workspace", terminal_only=True)
     target = need_notebook(cfg)
     with ui.spinner("reading the workspace…"):
         info = nb.describe(cfg, cfg.profile(account).creds)
@@ -82,6 +83,8 @@ def files(
 ) -> None:
     """What a saved version holds -- what `kdev up` restores."""
     cfg = config.load()
+    if not as_json:
+        ui.header("workspace files", terminal_only=True)
     target = need_notebook(cfg)
     if version and not re.fullmatch(r"v\d+", version):
         raise KdevError("--version takes a label like v12.")
@@ -131,6 +134,7 @@ def join(account: str = typer.Option("", "--account", "-a", help="Look as this a
             "Without a terminal, name it: kdev workspace use owner/slug",
         )
     cfg = config.load()
+    ui.header("workspace join", terminal_only=True)
     prof = cfg.profile(account)
     if nb.join(cfg, prof.creds, prof.username):
         _adopt(cfg, prof.creds)
@@ -146,6 +150,7 @@ def use(
 ) -> None:
     """Point this machine at a notebook by name."""
     cfg = config.load()
+    ui.header("workspace use", terminal_only=True)
     creds = cfg.profile(account).creds
     with ui.spinner("opening the notebook…"):
         nb.use(cfg, creds, ref)
@@ -165,6 +170,7 @@ def create(
 ) -> None:
     """Make a new notebook and share it with your group."""
     cfg = config.load()
+    ui.header("workspace create", terminal_only=True)
     if not group:
         if not ui.interactive():
             raise KdevError("Name the group.", "kdev workspace create --group <slug>")
@@ -195,6 +201,7 @@ def share(
 ) -> None:
     """Give the group Can Edit on the notebook again."""
     cfg = config.load()
+    ui.header("workspace share", terminal_only=True)
     target = need_notebook(cfg)
     slug = group or cfg.group_slug
     if not slug:

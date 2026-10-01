@@ -105,6 +105,7 @@ def doctor(
 ) -> None:
     """Check everything kdev depends on. Exits 1 if something is broken."""
     cfg = config.load()
+    ui.header("doctor", terminal_only=True)
     if upgrade or (fix and not cloudflared.find()):
         path = ui.download("cloudflared", cloudflared.install)
         ui.ok(f"installed cloudflared {cloudflared.version(path)}")

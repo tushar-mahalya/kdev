@@ -7,6 +7,11 @@ All notable changes are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- Colour terminals show a five-line pixel kdev header with the command and
+  version beside the terminal symbol, once per invocation, including setup and menu
+  actions. Narrow terminals use the compact terminal badge;
+  ASCII terminals and `NO_COLOR` use plain titles. The wordmark adapts to light
+  and dark backgrounds. Piped output, JSON, logs and SSH command output stay clean.
 - CI reports test coverage from one Linux matrix job and includes the coverage
   table in each pull request's job summary.
 - `uv run basedpyright` type-checks `src` and `tests` in basic mode; it runs on
@@ -20,6 +25,13 @@ All notable changes are recorded here. The format follows
 
 - The box warns every open shell and the session log once at 15 minutes and
   once at 5 minutes before the session ends.
+
+### Changed
+- The terminal UI uses a geometric KDEV wordmark and terminal badge, consistent rounded
+  workspace and result cards, clearer account quotas, framed progress with
+  elapsed times, and grouped command help. Tables and next actions adapt to
+  narrow terminals without dropping values. Light/dark terminal colors,
+  ASCII and monochrome prompts remain usable; live refresh is limited to 8 Hz.
 
 ### Fixed
 - Simultaneous `kdev up` clients elect the lowest live version, stop their

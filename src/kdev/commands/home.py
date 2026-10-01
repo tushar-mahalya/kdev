@@ -40,22 +40,23 @@ def overview(run_command) -> None:
     if not cfg.notebook:
         box.append("no workspace yet", style="kdev.warn")
     elif running:
-        box.append("running", style="bold kdev.ok")
+        box.append("running", style="kdev.running")
         box.append("  reachable" if reachable else "  starting or unreachable", style="kdev.muted")
     else:
         box.append("stopped", style="bold")
         box.append(f"  files saved in {cfg.notebook}", style="kdev.muted")
-    ui.console.print(
-        ui.facts(
-            [
-                ("box", box),
-                ("workspace", cfg.notebook or "—"),
-                ("next box", box_label(cfg)),
-                ("tunnel", cfg.tunnel_hostname or "quick"),
-            ]
-        )
-    )
+    overview = [
+        ("box", box),
+        ("workspace", cfg.notebook or "—"),
+        ("next box", box_label(cfg)),
+        ("tunnel", cfg.tunnel_hostname or "quick"),
+    ]
+    if ui.console.is_terminal:
+        ui.card("Workspace", overview)
+    else:
+        ui.console.print(ui.facts(overview))
     ui.blank()
+    ui.section("Accounts", f"{len(rows)} connected")
     ui.console.print(ui.accounts_table(rows))
     ui.blank()
 

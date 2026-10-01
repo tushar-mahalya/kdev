@@ -25,6 +25,8 @@ def main(
     cfg = config.load()
     if not cfg.profiles:
         raise KdevError("No accounts yet.", "Sign one in: kdev account add")
+    if not as_json:
+        ui.header("account", terminal_only=True)
     with ui.spinner("reading quota…"):
         rows = quota.rows(cfg)
     if as_json:
@@ -43,6 +45,7 @@ def main(
             ]
         )
         return
+    ui.section("Accounts", f"{len(rows)} connected")
     ui.console.print(ui.accounts_table(rows))
     total = sum(r.gpu_left for r in rows if not r.error)
     ui.blank()
@@ -60,6 +63,7 @@ def main(
 def add(name: str = typer.Argument("", help="A short name for the account, e.g. alice.")) -> None:
     """Sign a Kaggle account in (opens a browser). Re-run to refresh one."""
     cfg = config.load()
+    ui.header("account add", terminal_only=True)
     if not name and not ui.interactive():
         raise KdevError("Name the account.", "kdev account add <name>")
     if name:
@@ -108,6 +112,7 @@ def _refresh(cfg: config.Config, name: str) -> None:
 def use(name: str = typer.Argument("", help="The account to make active.")) -> None:
     """Choose which account runs the next box."""
     cfg = config.load()
+    ui.header("account use", terminal_only=True)
     if not cfg.profiles:
         raise KdevError("No accounts yet.", "Sign one in: kdev account add")
     if not name:
@@ -129,6 +134,7 @@ def remove(
 ) -> None:
     """Sign an account out and forget it on this machine."""
     cfg = config.load()
+    ui.header("account remove", terminal_only=True)
     prof = cfg.profile(name)
     if len(cfg.profiles) == 1:
         raise KdevError(

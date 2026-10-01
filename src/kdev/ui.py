@@ -21,11 +21,11 @@ Tokens
 Glyphs      ✓ done   ! attention   ✗ failed   ● live   ○ idle/pending   › step
 
 Components
-  header(title, facts)   one line: what this command is acting on
+  header(title, facts)   pixel logo in colour terminals, then the command context
   ok / warn / err        a status line; `hint` sits indented beneath
   facts(rows)            aligned label/value pairs
-  card(title, rows)      the one bordered block a command may print: its result
-  table(...)             borderless, muted uppercase headers
+  card(title, rows)      the command's result, with facts and next actions
+  table(...)             restrained headers; labeled records on narrow terminals
   Stages                 the live board for long operations
   next_steps(cmds)       what to run next, commands in accent
   spinner(text)          "doing something…", always present tense and lowercase
@@ -33,7 +33,7 @@ Components
 Voice
   Sentence case. No trailing full stop on a one-line status. Labels lowercase.
   A command, when shown, is the literal thing to type. Durations like 9h or
-  2m04s, clock times like 14:05. One card per command at most.
+  2m04s, clock times like 14:05. One result card per command.
 
 It degrades: without a TTY, boards become plain lines and prompts never
 appear; NO_COLOR is honoured; a terminal that cannot draw the glyphs gets ASCII.
@@ -47,16 +47,20 @@ import sys
 import time
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
+from itertools import groupby
 from pathlib import Path
 from typing import Any, Protocol
 
 import questionary
 from questionary import Choice
-from rich.console import Console, Group
+from rich import box
+from rich.console import Console, ConsoleOptions, Group, RenderableType, RenderResult
 from rich.live import Live
 from rich.padding import Padding
 from rich.panel import Panel
+from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 from rich.theme import Theme
@@ -65,11 +69,42 @@ from .errors import Cancelled
 
 ACCENT = "#00b8d4"
 MUTED = "grey58"
+MAX_WIDTH = 96
+
+# Custom geometric KDEV wordmark and a landscape terminal badge. Two pixel
+# rows form one text line; the fifth line is reserved for command metadata.
+# The compact badge uses its own four-line composition without that empty row.
+_LOGO_ROWS = (
+    " hhhhhhhhhhhhhh     hh    hh  ffffff    ffffffff  ff    ff",
+    "hh            hh    hh   hh   fffffff   ffffffff  ff    ff",
+    "hh  aa        hh    aa  aa    ff   fff  ff        ff    ff",
+    "hh   aa       hh    aaaaa     ff    ff  ffffff     ff  ff ",
+    "aa   aa       aa    ddddd     ff    ff  ffffff     ff  ff ",
+    "aa  aa  dddd  aa    dd  dd    ff   fff  ff          ffff  ",
+    "aa            aa    dd   dd   fffffff   ffffffff    ffff  ",
+    " aaaaaaaaaaaaaa     dd    dd  ffffff    ffffffff     ff   ",
+    "",
+    "",
+)
+_LOGO_WIDTH = max(map(len, _LOGO_ROWS))
+_ICON_WIDTH = 16
+_ICON_HEIGHT = 8
+_WORDMARK_LEFT = _ICON_WIDTH + 4
+_LOGO_PALETTE = {
+    "a": ACCENT,
+    "h": "#43d5ed",
+    "d": "#218eff",
+    "f": "default",  # Wordmark follows the foreground of light and dark terminals.
+}
+_logo_printed: ContextVar[bool | None] = ContextVar("kdev_logo_printed", default=None)
 
 THEME = Theme(
     {
         "kdev.accent": ACCENT,
         "kdev.muted": MUTED,
+        "kdev.border": "grey42",
+        "kdev.table_head": "bold grey58",
+        "kdev.running": "bold green",
         "kdev.ok": "green",
         "kdev.warn": "yellow",
         "kdev.err": "red",
@@ -105,7 +140,9 @@ _SPINNERS = ("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏", "|/-\\")
 
 def _ascii_only() -> bool:
     encoding = (getattr(sys.stdout, "encoding", "") or "").lower()
-    return not ("utf" in encoding or encoding in ("", "cp65001"))
+    return os.environ.get("TERM") == "dumb" or not (
+        "utf" in encoding or encoding in ("", "cp65001")
+    )
 
 
 def g(name: str) -> str:
@@ -130,6 +167,28 @@ STYLE = questionary.Style(
         ("disabled", "fg:#6c6c6c italic"),
     ]
 )
+# Questionary merges custom styles over its colored defaults, so an empty
+# style is insufficient. Explicitly reset every token used by our prompts.
+_MONO_STYLE = questionary.Style(
+    [
+        (token, "noinherit fg:default bg:default")
+        for token in (
+            "",
+            "qmark",
+            "question",
+            "answer",
+            "pointer",
+            "highlighted",
+            "selected",
+            "separator",
+            "instruction",
+            "disabled",
+            "text",
+            "search_success",
+            "search_none",
+        )
+    ]
+)
 
 
 def interactive() -> bool:
@@ -143,7 +202,8 @@ GUTTER = 2
 
 
 def _line(target: Console, glyph: str, style: str, msg: str | Text) -> None:
-    target.print(Text.assemble((f"{glyph:<{GUTTER}}", style), msg))
+    line = Text.assemble((f"{glyph:<{GUTTER}}", style), msg)
+    target.print(Padding(line, (0, 0, 0, GUTTER), expand=False) if target.is_terminal else line)
 
 
 def ok(msg: str | Text, hint_text: str = "") -> None:
@@ -177,17 +237,93 @@ def blank() -> None:
     console.print()
 
 
-def header(title: str = "", context: Sequence[tuple[str, str]] = ()) -> None:
-    """What this command is acting on, in one line (two on a narrow terminal)."""
+@contextmanager
+def command_header_scope() -> Iterator[None]:
+    """Show the logo once, including setup and actions picked from the overview."""
+    token = _logo_printed.set(False)
+    try:
+        yield
+    finally:
+        _logo_printed.reset(token)
+
+
+def _logo(*, compact: bool = False, metadata: Text | None = None) -> Text:
+    art = Text(no_wrap=True, overflow="crop")
+    width = _ICON_WIDTH if compact else _LOGO_WIDTH
+    height = _ICON_HEIGHT if compact else len(_LOGO_ROWS)
+    for y in range(0, height, 2):
+        if y:
+            art.append("\n")
+        meta_row = not compact and metadata is not None and y == len(_LOGO_ROWS) - 2
+        row_width = _WORDMARK_LEFT if meta_row else width
+        top = _LOGO_ROWS[y][:row_width].ljust(row_width)
+        bottom = _LOGO_ROWS[y + 1][:row_width].ljust(row_width)
+        pixels: list[tuple[str, str | None]] = []
+        for upper, lower in zip(top, bottom, strict=True):
+            if upper == lower:
+                pixels.append((" " if upper == " " else "█", _LOGO_PALETTE.get(upper)))
+            elif lower == " ":
+                pixels.append(("▀", _LOGO_PALETTE[upper]))
+            elif upper == " ":
+                pixels.append(("▄", _LOGO_PALETTE[lower]))
+            else:
+                pixels.append(("▀", f"{_LOGO_PALETTE[upper]} on {_LOGO_PALETTE[lower]}"))
+        # Adjacent pixels share one style run, keeping ANSI output compact.
+        for style, run in groupby(pixels, key=lambda pixel: pixel[1]):
+            art.append("".join(char for char, _ in run), style)
+        if meta_row and metadata is not None:
+            art.append(metadata)
+    return art
+
+
+def header(
+    title: str = "",
+    context: Sequence[tuple[str, str]] = (),
+    *,
+    terminal_only: bool = False,
+) -> None:
+    """Responsive branding and context; terminal-only headers preserve piped data."""
     from . import __version__
 
-    line = Text.assemble(("kdev", "kdev.head"))
-    if title:
-        line.append(f" {g('bullet')} ", style="kdev.muted")
-        line.append(title, style="bold")
-    line.append(f"  v{__version__}", style="kdev.muted")
-    console.print(line)
+    if terminal_only and not console.is_terminal:
+        return
+    metadata = Text.assemble(
+        (title or "overview", "bold"),
+        (f"  {g('bullet')}  v{__version__}", "kdev.muted"),
+    )
+    full_logo = console.width >= max(_LOGO_WIDTH, _WORDMARK_LEFT + metadata.cell_len) + GUTTER
+    show_logo = (
+        console.is_terminal
+        and console.color_system
+        and not console.no_color
+        and not _no_colour()
+        and not _ascii_only()
+        and console.width >= _ICON_WIDTH + GUTTER
+        and _logo_printed.get() is not True
+    )
+    if show_logo:
+        console.print(
+            Padding(
+                _logo(compact=not full_logo, metadata=metadata), (0, 0, 0, GUTTER), expand=False
+            )
+        )
+        if _logo_printed.get() is not None:
+            _logo_printed.set(True)
+    if not (show_logo and full_logo):
+        if show_logo:
+            console.print()
+        line = Text.assemble(("kdev", "kdev.head"))
+        if title:
+            line.append(f" {g('bullet')} ", style="kdev.muted")
+            line.append(title, style="bold")
+        line.append(f"  v{__version__}", style="kdev.muted")
+        if console.is_terminal:
+            console.print(Padding(line, (0, 0, 0, GUTTER), expand=False))
+        else:
+            console.print(line)
     if context:
+        if show_logo and full_logo:
+            console.print()
         row = Text("  ")
         for i, (label, value) in enumerate(context):
             if i:
@@ -206,49 +342,126 @@ def header(title: str = "", context: Sequence[tuple[str, str]] = ()) -> None:
     console.print()
 
 
-def facts(rows: Sequence[tuple[str, object]], indent: int = GUTTER) -> Table:
-    """Aligned label/value pairs. Labels muted and right-aligned."""
+def _facts_body(rows: Sequence[tuple[str, object]], width: int) -> RenderableType:
+    """Keep long paths, hostnames and commands visible, even in a small window."""
+    if width < 44:
+        lines: list[Text] = []
+        for label, value in rows:
+            text = Text()
+            if label:
+                text.append(label + "\n", style="kdev.muted")
+            text.append(value if isinstance(value, Text) else str(value))
+            lines.append(text)
+        return Group(*lines)
     grid = Table.grid(padding=(0, 2))
-    grid.add_column(style="kdev.muted", justify="right")
-    grid.add_column()
+    grid.add_column(style="kdev.muted", justify="right", no_wrap=True)
+    grid.add_column(overflow="fold")
     for label, value in rows:
         grid.add_row(label, value if isinstance(value, Text) else Text(str(value)))
-    return Padding(grid, (0, 0, 0, indent), expand=False)  # type: ignore[return-value]
+    return grid
+
+
+def facts(rows: Sequence[tuple[str, object]], indent: int = GUTTER) -> Padding:
+    """Aligned facts, stacked when labels would crowd out their values."""
+    width = min(console.width, MAX_WIDTH) - indent
+    return Padding(_facts_body(rows, width), (0, 0, 0, indent), expand=False)
+
+
+def section(title: str, detail: str = "") -> None:
+    """A quiet heading for a group of related information in a terminal."""
+    if not console.is_terminal:
+        return
+    text = Text(title, style="bold")
+    if detail:
+        text.append(f"  {g('bullet')}  {detail}", style="kdev.muted")
+    console.print(Padding(text, (0, 0, 0, GUTTER), expand=False))
+    console.print(
+        Padding(
+            Rule(style="kdev.border", characters="-" if _ascii_only() else "─"),
+            (0, GUTTER),
+        ),
+        width=min(console.width, MAX_WIDTH),
+    )
 
 
 def card(title: str | Text, rows: Sequence[tuple[str, object]], tone: str = "muted") -> None:
-    """The one bordered block a command may print: its result."""
-    body = Table.grid(padding=(0, 2))
-    body.add_column(style="kdev.muted", justify="right")
-    body.add_column()
-    for label, value in rows:
-        body.add_row(label, value if isinstance(value, Text) else Text(str(value)))
-    border = {"ok": "kdev.ok", "warn": "kdev.warn", "err": "kdev.err"}.get(tone, MUTED)
+    """A bounded result card, with space for facts and copyable commands."""
+    terminal = console.is_terminal
+    width = min(console.width, MAX_WIDTH)
+    padding = (1, 2 if width >= 48 else 1)
+    body = _facts_body(rows, width - padding[1] * 2 - 2)
+    border = {"ok": "kdev.ok", "warn": "kdev.warn", "err": "kdev.err"}.get(
+        tone, "kdev.border" if terminal else MUTED
+    )
     console.print(
         Panel(
-            body, title=title, title_align="left", border_style=border, padding=(1, 2), expand=False
+            body,
+            title=Text(title, style="bold default") if isinstance(title, str) else title,
+            title_align="left",
+            border_style=border,
+            box=box.ASCII if _ascii_only() else box.ROUNDED,
+            padding=padding,
+            width=width if terminal else None,
+            expand=terminal,
         )
     )
+
+
+class _ResponsiveTable(Table):
+    """Retain Table's public API while giving narrow terminals labeled records."""
+
+    def __rich_console__(self, target: Console, options: ConsoleOptions) -> RenderResult:
+        width = min(options.max_width, MAX_WIDTH)
+        threshold = 80 if len(self.columns) >= 5 else 64
+        if target.is_terminal and width < threshold:
+            if self.title:
+                yield Padding(Text(str(self.title), style="bold"), (0, 0, 1, GUTTER))
+            cells = [list(column.cells) for column in self.columns]
+            for index in range(self.row_count):
+                rows = [
+                    (str(column.header).lower(), column_cells[index])
+                    for column, column_cells in zip(self.columns, cells, strict=True)
+                ]
+                # An unlabeled leading column is a status marker; pair it with
+                # the identity so an active account is still unambiguous.
+                if rows and not rows[0][0] and len(rows) > 1:
+                    marker, identity = rows[0][1], rows[1][1]
+                    rows[1] = (
+                        rows[1][0],
+                        Text.assemble(
+                            marker if isinstance(marker, Text) else str(marker),
+                            " ",
+                            identity if isinstance(identity, Text) else str(identity),
+                        ),
+                    )
+                    rows.pop(0)
+                yield Padding(_facts_body(rows, width - GUTTER), (0, GUTTER, 1, GUTTER))
+            return
+        yield from super().__rich_console__(target, options)
 
 
 def table(
     columns: Sequence[tuple[str, str]], rows: Iterable[Sequence[object]], title: str = ""
 ) -> Table:
-    """Borderless; columns are (header, justify)."""
+    """Readable tabular data; columns are (header, justify)."""
     # pad_edge puts the first column on the same two-space gutter as every
     # other line kdev prints.
-    t = Table(
-        box=None,
+    terminal = console.is_terminal
+    t = _ResponsiveTable(
+        box=(box.ASCII if _ascii_only() else box.SIMPLE_HEAD) if terminal else None,
+        border_style="kdev.border",
         expand=False,
-        padding=(0, 2),
-        header_style="kdev.muted",
+        padding=(0, 1) if terminal else (0, 2),
+        header_style="kdev.table_head" if terminal else "kdev.muted",
         title=title or None,
         title_style="bold",
         title_justify="left",
         pad_edge=True,
+        show_edge=not terminal,
+        width=min(console.width, MAX_WIDTH) if terminal else None,
     )
     for name, justify in columns:
-        t.add_column(name.upper(), justify=justify)  # type: ignore[arg-type]
+        t.add_column(name.upper(), justify=justify, overflow="fold")  # type: ignore[arg-type]
     for row in rows:
         t.add_row(*[c if isinstance(c, Text) else Text(str(c)) for c in row])
     return t
@@ -257,6 +470,23 @@ def table(
 def next_steps(steps: Sequence[tuple[str, str]]) -> None:
     """What to run next. Commands in accent, aligned, one per line."""
     if not steps:
+        return
+    if console.is_terminal:
+        section("Next")
+        rows = [
+            (Text(command, style="kdev.cmd"), Text(what, style="kdev.muted"))
+            for command, what in steps
+        ]
+        if console.width < 64:
+            for command, what in rows:
+                console.print(Padding(Group(command, what), (0, GUTTER, 1, GUTTER)))
+        else:
+            grid = Table.grid(padding=(0, 3))
+            grid.add_column(overflow="fold")
+            grid.add_column(overflow="fold")
+            for command, what in rows:
+                grid.add_row(command, what)
+            console.print(Padding(grid, (0, GUTTER)), width=min(console.width, MAX_WIDTH))
         return
     width = max(len(cmd) for cmd, _ in steps)
     for cmd, what in steps:
@@ -286,7 +516,12 @@ def spinner(text: str) -> Iterator[_Status]:
     if not interactive():
         yield _NullStatus()
         return
-    with console.status(Text(text, style="kdev.muted"), spinner="dots") as status:
+    with console.status(
+        Text(text, style="kdev.muted"),
+        spinner="line" if _ascii_only() else "dots",
+        spinner_style="kdev.accent",
+        refresh_per_second=8,
+    ) as status:
         yield status
 
 
@@ -366,16 +601,19 @@ def accounts_table(rows: Sequence[ProfileRow]) -> Table:
                 name,
                 Text(r.username, style="kdev.muted"),
                 Text(r.error, style="kdev.err"),
-                Text("—"),
-                Text("—"),
+                Text("-" if _ascii_only() else "—"),
+                Text("-" if _ascii_only() else "—"),
             )
         else:
+            meter = bar(r.fraction, width=10 if console.is_terminal else 14)
+            if console.is_terminal:
+                meter.append(f"  {r.fraction:.0%}", style="kdev.muted")
             t.add_row(
                 marker,
                 name,
                 Text(r.username, style="kdev.muted"),
-                bar(r.fraction),
-                Text(r.hours),
+                meter,
+                Text(r.hours, style="bold" if console.is_terminal else ""),
                 Text(fmt_hours(r.tpu_left), style="kdev.muted"),
             )
     return t
@@ -405,9 +643,18 @@ def pick_profile(rows: Sequence[ProfileRow], need_hours: float) -> str:
 # --- prompts ------------------------------------------------------------------
 
 
+def _prompt_style() -> questionary.Style:
+    return _MONO_STYLE if _no_colour() or console.no_color else STYLE
+
+
 def select(question: str, choices: list[Choice]) -> str:
     answer = questionary.select(
-        question, choices=choices, style=STYLE, qmark=g("prompt"), instruction=" "
+        question,
+        choices=choices,
+        style=_prompt_style(),
+        qmark=g("prompt"),
+        pointer=g("prompt"),
+        instruction="(up/down to move, enter to select)",
     ).ask()
     if answer is None:
         raise Cancelled()
@@ -427,7 +674,9 @@ def confirm(question: str, default: bool = True) -> bool:
     wherever saying yes would lose something."""
     if not interactive():
         return default
-    answer = questionary.confirm(question, default=default, style=STYLE, qmark=g("prompt")).ask()
+    answer = questionary.confirm(
+        question, default=default, style=_prompt_style(), qmark=g("prompt")
+    ).ask()
     if answer is None:
         raise Cancelled()
     return answer
@@ -437,9 +686,11 @@ def ask(question: str, default: str = "", secret: bool = False) -> str:
     # Called separately: `password` takes no default, and the two signatures
     # are honest on their own terms rather than joined through **kwargs.
     if secret:
-        answer = questionary.password(question, style=STYLE, qmark=g("prompt")).ask()
+        answer = questionary.password(question, style=_prompt_style(), qmark=g("prompt")).ask()
     else:
-        answer = questionary.text(question, default=default, style=STYLE, qmark=g("prompt")).ask()
+        answer = questionary.text(
+            question, default=default, style=_prompt_style(), qmark=g("prompt")
+        ).ask()
     if answer is None:
         raise Cancelled()
     return answer.strip()
@@ -474,7 +725,9 @@ def pick_hours(gpu: str, quota_hours: float) -> float:
     choices.append(Choice(title="Custom…", value=0.0))
     answer = float(select(f"Session length? (Kaggle stops it at {cap:g}h)", choices))
     if answer == 0.0:
-        raw = questionary.text("Hours:", default="6", style=STYLE, qmark=g("prompt")).ask()
+        raw = questionary.text(
+            "Hours:", default="6", style=_prompt_style(), qmark=g("prompt")
+        ).ask()
         if raw is None:
             raise Cancelled()
         from .errors import KdevError
@@ -528,7 +781,7 @@ class Stages:
     def __enter__(self) -> Stages:
         if interactive():
             self._live = Live(
-                self._render(), console=console, refresh_per_second=12, transient=False
+                self._render(), console=console, refresh_per_second=8, transient=False
             )
             self._live.__enter__()
         elif self.head:
@@ -553,17 +806,17 @@ class Stages:
             glyph, style, label_style = g("pending"), "kdev.muted", "kdev.muted"
         return Text(glyph, style=style), Text(stage.label, style=label_style)
 
-    def _render(self, final: bool = False) -> Group:
+    def _render(self, final: bool = False) -> Group | Panel:
         self.tick += 1
         lines = []
-        if self.head:
+        if self.head and not console.is_terminal:
             head = Text("  " + self.head, style="kdev.muted")
             head.append(f"   {_fmt_elapsed(time.monotonic() - self.started)}", style="kdev.muted")
             lines.append(head)
-        board = Table.grid(padding=(0, 1))
+        board = Table.grid(padding=(0, 1), expand=console.is_terminal)
         board.add_column(width=2)
         board.add_column(width=1)
-        board.add_column(ratio=1)
+        board.add_column(ratio=1, overflow="fold")
         board.add_column(justify="right")
         for stage in self._stages:
             glyph, label = self._marks(stage, final)
@@ -574,6 +827,29 @@ class Stages:
             if self.detail and stage.key == self.current and (not final or stage.failed):
                 board.add_row("", "", Text(self.detail, style="kdev.muted"), "")
         lines.append(board)
+        if console.is_terminal:
+            elapsed = _fmt_elapsed(time.monotonic() - self.started)
+            completed = len(self.done)
+            summary = Text(
+                f"{completed}/{len(self._stages)} complete  {g('bullet')}  {elapsed}",
+                style="kdev.muted",
+            )
+            content: list[RenderableType] = []
+            if self.head:
+                content.append(Text(self.head, style="bold"))
+                content.append(Text(""))
+            content.append(board)
+            return Panel(
+                Group(*content),
+                title=Text("Progress", style="bold default"),
+                subtitle=summary,
+                title_align="left",
+                subtitle_align="right",
+                border_style="kdev.border",
+                box=box.ASCII if _ascii_only() else box.ROUNDED,
+                padding=(1, 1),
+                width=min(console.width, MAX_WIDTH),
+            )
         return Group(*lines)
 
     def _refresh(self) -> None:
@@ -661,13 +937,14 @@ def download(label: str, installer: Callable[..., Path]) -> Path:
     if not interactive():
         return installer(None)
     with Progress(
-        SpinnerColumn(style="kdev.accent"),
+        SpinnerColumn("line" if _ascii_only() else "dots", style="kdev.accent"),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(complete_style=ACCENT, finished_style="green"),
         DownloadColumn(),
         TransferSpeedColumn(),
         console=console,
         transient=True,
+        refresh_per_second=8,
     ) as bars:
         task = bars.add_task(f"fetching {label}", total=None)
 
