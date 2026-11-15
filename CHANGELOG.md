@@ -7,14 +7,38 @@ All notable changes are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- A new home screen. Bare `kdev` in a terminal is a live menu that is usable
+  at once: the box and every account's quota fill in while it is on screen, a
+  running box counts down in place, and the active account's quota bar shows
+  what the next box would use. Every action has a key (`1`-`4`, `s` status, `a`
+  accounts, `d` doctor, `q` quits), arrows and `j`/`k` move, and the
+  highlighted item shows the exact command it runs. Read-only picks return to
+  the menu.
+- Every list prompt is numbered; a digit picks its row at once, `j`/`k` move.
+- `kdev up` draws its progress as a rail, with a clock per step and how long
+  that step usually takes on this machine.
+- `status` and the ready card show the time left as a draining bar that turns
+  yellow at 30 minutes and red at 10.
+- `kdev --help` ends with worked examples and uses kdev's palette. Usage
+  mistakes are reported in the same voice as every other error, with the
+  `--help` of the command being typed, and a near-miss setting or `--gpu`
+  value gets a "Did you mean".
+- `kdev account` (and `--json`, as `quota_resets`) and the home screen say
+  when the weekly quota refills. Choosing a session length shows what each
+  choice leaves of this week's quota.
+- Every prompt, spinner and card sits on the same two-column gutter; a
+  spinner shows its elapsed time once a wait passes three seconds. In a
+  short terminal the home screen drops the logo and folds its secondary
+  actions onto one line.
+- `kdev workspace files` summarises each top-level folder; `--all` lists every
+  file. `kdev backup --force` overrides the new restore guard (see Fixed).
 - A project website at https://kdev-cli.pages.dev: the docs with search, an
   interactive architecture explorer and the changelog. The README, PyPI page and
   citation now link to it.
-- Colour terminals show a five-line pixel kdev header with the command and
-  version beside the terminal symbol, once per invocation, including setup and menu
-  actions. Narrow terminals use the compact terminal badge;
-  ASCII terminals and `NO_COLOR` use plain titles. The wordmark adapts to light
-  and dark backgrounds. Piped output, JSON, logs and SSH command output stay clean.
+- Colour terminals show a five-line pixel kdev header on the home screen and in
+  setup; every other command gets one line, `›_ kdev › status`, with its
+  context on the right. ASCII terminals and `NO_COLOR` use plain titles.
+  Piped output, JSON, logs and SSH command output stay clean.
 - CI reports test coverage from one Linux matrix job and includes the coverage
   table in each pull request's job summary.
 - `uv run basedpyright` type-checks `src` and `tests` in basic mode; it runs on
@@ -48,6 +72,36 @@ All notable changes are recorded here. The format follows
   preventing repeated warnings on `kdev up`.
 - `kdev logs` hides the kernel's debugger start-up warnings; `--all` still
   shows them.
+- `kdev status` took 13s on a large workspace: reading one version's state paged
+  through its whole file listing. It now stops after the first page (5.5s), and
+  Kaggle and ssh are asked at once. `history` reads versions in parallel and
+  remembers ended ones (61s, then 1.2s on a repeat run). `doctor` checks
+  accounts in parallel.
+- Every command minted a new Kaggle access token, often several, and wrote it
+  into `~/.kaggle/credentials.json` -- the official CLI's own login. Tokens are
+  now reused until near expiry and only ever written to kdev's own files.
+- Offline, every networked command died with "unexpected error"; accounts now
+  show "could not reach Kaggle", and `doctor` reports it as a check.
+- A transient Kaggle error while reading the notebook could make `kdev up`
+  replace the notebook's own code; only a missing notebook counts as empty now.
+- `workspace share` added a second binding for a group already on the notebook.
+- Non-interactive ssh and VS Code's server lost the notebook's PATH (`/opt/bin`,
+  CUDA) to pam_env; the box now gives pam_env the same PATH (verified on a box).
+- Changing `ssh-alias` or `tunnel-hostname` left a stale `~/.ssh/config` block,
+  and the block was appended after any `Host *`, whose settings then won.
+- `kdev backup` could replace the local copy with a box that never finished
+  restoring; it now refuses unless `--force`.
+- Piped output was wrapped at 80 columns; tables are now tab-separated and
+  nothing wraps. `kdev logs | head` no longer fails; `status --json` exits 1
+  when the state is unknown; `logs` on a stopped box says which run it shows.
+- ASCII-only terminals crashed on `×` and `·`; they get ASCII stand-ins.
+- Rate limiting (HTTP 429) is waited out, honouring Retry-After.
+- The `up` progress clocks and spinner froze between log lines during a long
+  silent step; an interrupted step was drawn as done.
+- Piped hints and next steps went to stdout between data rows; they now go
+  to stderr, and tables are real tab-separated values.
+- Some ssh calls had no timeout and could hang `up`, `restore` or `down`.
+- The tests no longer download cloudflared or touch the network or `$HOME`.
 
 ## [0.1.4] - 2026-09-24
 

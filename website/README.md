@@ -13,6 +13,10 @@ npm run preview      # wrangler pages dev on the built dist/ (real 404s and head
 ```
 
 - Docs live in `src/content/docs/*.md` (adapted from the root README).
+  Diagrams are inline HTML/SVG `<figure class="fig">` blocks inside the
+  Markdown (no blank lines inside a block), styled by the `.fig` and `.seq`
+  rules in `src/styles/global.css`. The plain-text outputs (`/docs/*.md`,
+  `/llms-full.txt`) replace each figure with its caption.
 - `/changelog` renders the repository's own `CHANGELOG.md`; nothing to copy.
 - No third-party requests: fonts are self-hosted via Fontsource, search is
   Pagefind running in the browser. `scripts/postbuild.mjs` hashes the inline

@@ -1,6 +1,6 @@
 ---
-// A replay of `kdev up`: the steps, glyphs and per-step clocks the CLI's
-// status board draws (ui.py: Stages), its ready card (ui.ready_card), then ssh.
+// A replay of `kdev up`: the rail, glyphs and per-step clocks the CLI's
+// progress board draws (ui.py: Stages), its ready card (ui.ready_card), then ssh.
 // Server-rendered in its final state so it reads correctly without JS; the
 // script rewinds it and plays it.
 const steps = [
@@ -26,22 +26,29 @@ const steps = [
   <div class="term__body" data-term-body aria-hidden="true">
     <p class="ln"><span class="p">$</span> <span data-type="kdev up">kdev up</span></p>
     <div class="board" data-board>
-      <p class="ln head"><span><b>alice</b> <span class="mu">· T4 ×2 · 9h</span></span><span class="mu" data-total>2m03s</span></p>
+      <p class="ln"><span class="rl">┌  </span><b>alice</b> <span class="mu">· T4 ×2 · 9h</span></p>
+      <p class="ln rl">│</p>
       {steps.map((s, i) => (
         <p class="ln step is-done" data-step={i}>
-          <span class="g" data-g>✓</span>
+          <span class="g" data-g>◇</span>
           <span class="st">{s.t}</span>
           <span class="clk" data-clk={s.d}>{s.d}</span>
         </p>
       ))}
-      <p class="ln sub" data-files><span class="bar"><i data-bar style="--p:1"></i></span><span class="mu"><span data-count>1505</span>/1505 files</span></p>
-      <p class="ln step is-done ready" data-step={steps.length}><span class="g" data-g>●</span><span class="st">Ready</span><span class="clk"></span></p>
+      <p class="ln sub" data-files><span class="rl">│</span><span class="bar"><i data-bar style="--p:1"></i></span><span class="mu"><span data-count>1505</span>/1505 files</span></p>
+      <p class="ln step is-done ready" data-step={steps.length}><span class="g" data-g>◇</span><span class="st">Ready</span><span class="clk"></span></p>
+      <p class="ln rl">│</p>
+      <p class="ln"><span class="rl" data-foot-g>└  </span><span data-foot><span class="ok">done</span><span class="mu"> in </span></span><span class="mu" data-total>2m03s</span></p>
     </div>
     <div class="card" data-card>
-      <p class="ln"><span class="ok">✓ ready</span></p>
-      <p class="ln"><span class="mu">  host     </span><b>box.example.com</b></p>
-      <p class="ln"><span class="mu">  ends     </span>23:14  (9h from now)<span class="mu">  files </span>1505 restored</p>
-      <p class="ln"><span class="mu">  connect  </span><span class="c">ssh kaggle</span><span class="mu">   stop </span><span class="c">kdev down</span></p>
+      <p class="ln card__t"><span class="ok">✓ ready</span></p>
+      <p class="ln"><span class="mu">     host  </span><b>box.example.com</b></p>
+      <p class="ln"><span class="mu">  account  </span>alice</p>
+      <p class="ln"><span class="mu">     time  </span><span class="left"></span><b>  9h00m left</b><span class="mu">  ·  ends 23:14</span></p>
+      <p class="ln"><span class="mu">    files  </span>1505 restored</p>
+      <p class="ln">&nbsp;</p>
+      <p class="ln"><span class="mu">  connect  </span><span class="c">ssh kaggle</span></p>
+      <p class="ln"><span class="mu">     stop  </span><span class="c">kdev down</span></p>
     </div>
     <p class="ln" data-ssh><span class="p">$</span> <span data-type="ssh kaggle">ssh kaggle</span></p>
     <p class="ln" data-gpu><span class="r">root@kaggle</span>:<span class="c">/kaggle/working</span># <span data-type="nvidia-smi -L">nvidia-smi -L</span></p>
@@ -93,9 +100,9 @@ const steps = [
   .r { color: #3ddc97; }
   .ok { color: #3ddc97; }
   b { color: #fff; font-weight: 600; }
-  .board { margin: 10px 0 12px; padding: 10px 14px; border: 1px solid rgb(255 255 255 / 0.08); border-radius: 10px; background: rgb(255 255 255 / 0.015); }
-  .head { display: flex; justify-content: space-between; margin-bottom: 4px; }
-  .step { display: grid; grid-template-columns: 22px 1fr auto; }
+  .board { margin: 10px 0 12px; }
+  .rl { color: #4d5763; }
+  .step { display: grid; grid-template-columns: 30px 1fr auto; max-width: 460px; }
   .step .g { color: #3ddc97; }
   .step.is-wait .g, .step.is-wait .st { color: #4d5763; }
   .step.is-run .g { color: #00b8d4; }
@@ -103,10 +110,12 @@ const steps = [
   .step.ready .g { color: #3ddc97; }
   .step .clk { color: var(--term-dim); font-variant-numeric: tabular-nums; }
   .step.is-wait .clk { visibility: hidden; }
-  .sub { display: flex; gap: 12px; align-items: center; padding-left: 22px; }
+  .sub { display: grid; grid-template-columns: 30px auto 1fr; gap: 0 12px; align-items: center; }
   .bar { width: 120px; height: 4px; border-radius: 4px; background: rgb(255 255 255 / 0.08); overflow: hidden; }
   .bar i { display: block; height: 100%; width: calc(var(--p) * 100%); background: linear-gradient(90deg, #00b8d4, #43d5ed); border-radius: inherit; }
-  .card { padding: 2px 0 12px; }
+  .card { position: relative; max-width: 470px; margin: 18px 0 14px; padding: 16px 14px 10px; border: 1px solid rgb(61 220 151 / 0.7); border-radius: 10px; }
+  .card__t { position: absolute; top: -12px; left: 12px; padding: 0 6px; background: var(--t-bg); }
+  .left { display: inline-block; width: 96px; height: 10px; border-radius: 2px; background: #3ddc97; vertical-align: -1px; }
   .cur { display: inline-block; width: 8px; height: 15px; background: #00b8d4; vertical-align: -3px; animation: cur 1s steps(2) infinite; }
   @keyframes cur { 50% { opacity: 0; } }
   [data-hide] { display: none; }
@@ -114,8 +123,7 @@ const steps = [
   @media (max-width: 560px) {
     .term { font-size: 11px; }
     .term__body { height: 470px; padding: 14px 14px 18px; }
-    .board { padding: 8px 10px; }
-    .bar { width: 70px; }
+      .bar { width: 70px; }
   }
 </style>
 
@@ -170,6 +178,7 @@ const steps = [
       later.forEach((el) => el.setAttribute('data-hide', ''));
       typed.forEach((el) => (el.textContent = ''));
       steps.forEach((el) => { el.className = el.className.replace(/is-\w+/g, '').trim() + ' is-wait'; const g = el.querySelector('[data-g]')!; g.textContent = '○'; });
+      q('[data-foot]').setAttribute('data-hide', '');
       files.setAttribute('data-hide', '');
       bar.style.setProperty('--p', '0');
       count.textContent = '0';
@@ -209,12 +218,13 @@ const steps = [
             await wait(80, s);
           }
           elapsed += realMs;
-          g.textContent = '✓';
+          g.textContent = '◇';
           el.classList.replace('is-run', 'is-done');
         }
         const ready = steps[steps.length - 1];
         ready.classList.replace('is-wait', 'is-done');
-        ready.querySelector('[data-g]')!.textContent = '●';
+        ready.querySelector('[data-g]')!.textContent = '◇';
+        q('[data-foot]').removeAttribute('data-hide');
         await wait(500, s);
         later[1].removeAttribute('data-hide');
         await wait(1100, s);

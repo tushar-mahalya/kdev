@@ -11,7 +11,7 @@ order: 6
 
 | command | what it does |
 |---|---|
-| `kdev` | overview of the box, accounts and workspace; in a terminal, the next actions |
+| `kdev` | the home screen: the box and every account's quota, live, with one key per action |
 | `kdev setup` | get this machine ready; only does what is missing |
 | `kdev up` | start the box, or connect to the running one |
 | `kdev down` | stop the box; files are saved however it stops |
@@ -21,11 +21,11 @@ order: 6
 | `kdev history [-n N] [--json]` | recent saved sessions, who ran them and how they ended |
 | `kdev logs [-n N] [--all]` | the session log |
 | `kdev restore [--from vN \| --from-backup]` | put saved files back |
-| `kdev backup` | copy the running box to this machine |
+| `kdev backup [--force]` | copy the running box to this machine (refuses a box that never finished restoring, unless `--force`) |
 | `kdev account [--json]` | accounts and quota |
 | `kdev account add \| use \| remove` | manage accounts |
 | `kdev workspace` | the notebook: owner, sharing, members, saved versions |
-| `kdev workspace files [--version vN] [--json]` | what a saved version holds |
+| `kdev workspace files [--version vN] [--all] [--json]` | what a saved version holds: each top-level folder and its file count; `--all` lists every file |
 | `kdev workspace join \| use \| create \| share` | choose, make, or re-share the notebook |
 | `kdev config` / `set KEY VALUE` / `unset KEY` | settings |
 | `kdev tunnel` / `tunnel setup` | the Cloudflare tunnel |

@@ -5,7 +5,8 @@ group: Start
 order: 1
 ---
 
-Needs Python 3.11+, `ssh`, and a Kaggle account in a Kaggle group.
+Needs Python 3.11+, `ssh`, and a Kaggle account in a Kaggle group. To see
+what kdev sets up before you run it, read [How it works](/docs/how-it-works/).
 
 ```bash
 uv tool install kdev-cli      # or: pipx install kdev-cli
