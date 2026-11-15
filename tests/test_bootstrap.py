@@ -401,3 +401,23 @@ def test_quick_tunnel_render_has_no_hostname_and_scrapes_the_log():
     ast.parse(src)
     assert "wait_for_quick_tunnel_host" in src
     assert "trycloudflare.com" in src
+
+
+def test_ssh_sessions_get_the_notebooks_path_despite_pam_env(monkeypatch, tmp_path):
+    """pam_env resets PATH from /etc/environment after ~/.ssh/environment, so
+    the notebook's PATH (CUDA, /opt/bin) must be written there too."""
+    src = bootstrap.render(ssh_public_key="k", tunnel_hostname="", hold_seconds=60)
+    body = src[src.index("def _pam_path(path):") : src.index("def add_env(")]
+    etc = tmp_path / "environment"
+    etc.write_text('PATH="/usr/bin:/bin"\nLANG=C.UTF-8\n')
+    real_path = pathlib.Path
+
+    def fake_path(p, *rest):
+        return etc if str(p) == "/etc/environment" else real_path(p, *rest)
+
+    scope = {"pathlib": type("P", (), {"Path": staticmethod(fake_path)})}
+    exec(body, scope)
+    scope["_pam_path"]("/opt/bin:/usr/local/cuda/bin:/usr/bin")
+    assert etc.read_text() == 'LANG=C.UTF-8\nPATH="/opt/bin:/usr/local/cuda/bin:/usr/bin"\n'
+    scope["_pam_path"]('bad"quote')  # never writes a value it cannot quote
+    assert "bad" not in etc.read_text()

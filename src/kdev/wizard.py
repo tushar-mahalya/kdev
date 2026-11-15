@@ -7,6 +7,7 @@ comes from the notebook itself, so Cloudflare setup is skipped entirely.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -164,10 +165,16 @@ def ensure_ssh_key(cfg: config.Config) -> None:
     ui.ok("ssh key      generated ~/.ssh/id_ed25519")
 
 
+def _short(version: str) -> str:
+    """`cloudflared version 2026.9.1 (built …)` -> `2026.9.1`."""
+    found = re.search(r"\d{4}\.\d+\.\d+", version)
+    return found.group(0) if found else version
+
+
 def ensure_cloudflared() -> None:
     found = cloudflared.find()
     if found:
-        ui.ok(f"cloudflared  {cloudflared.version(found)}")
+        ui.ok(f"cloudflared  {_short(cloudflared.version(found))}")
         return
     ui.warn("cloudflared is missing; ssh uses it to reach the box")
     if not ui.confirm(
@@ -175,7 +182,7 @@ def ensure_cloudflared() -> None:
     ):
         raise KdevError("kdev needs cloudflared.", "Install it: brew install cloudflared")
     path = ui.download("cloudflared", cloudflared.install)
-    ui.ok(f"cloudflared  {cloudflared.version(path)}")
+    ui.ok(f"cloudflared  {_short(cloudflared.version(path))}")
 
 
 def sign_in(cfg: config.Config, name: str = "") -> str:
@@ -243,8 +250,7 @@ def run() -> config.Config:
     config.save(cfg)
 
     ui.blank()
-    ui.ok("ready", f"settings saved to {config.CONFIG_PATH}")
-    ui.blank()
+    ui.ok(ui.Text("ready", style="kdev.ok"), f"settings saved to {config.CONFIG_PATH}")
     ui.next_steps(
         [("kdev up", "start the box"), ("kdev account add", "add another account to share quota")]
     )

@@ -33,12 +33,25 @@ class Profile:
 
     @property
     def creds(self) -> Creds:
+        """This account's credentials, with a current token.
+
+        Cheap after the first read in a process: `auth` keeps the token until
+        it is near expiry. Deliberately not cached here as well -- a Profile
+        lives as long as a `kdev up`, which can outlast the token.
+
+        A sign-in that is missing or no longer accepted yields an empty token,
+        so the call it is for fails as "not signed in". One that could not be
+        refreshed for now (offline, Kaggle down) raises `auth.AuthUnavailable`:
+        that is not a reason to sign in again.
+        """
         from . import auth
 
         token = ""
         if self.name and auth.signed_in(self.name):
             try:
                 token = auth.access_token(self.name)
+            except auth.AuthUnavailable:
+                raise
             except auth.AuthError:
                 token = ""
         return Creds(self.username, token)

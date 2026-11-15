@@ -47,24 +47,27 @@ def main(ctx: typer.Context) -> None:
                 where = f"points at {rec.get('content')}" if rec else "has no record"
                 rows.append(("dns", Text(f"{ui.g('err')} {where}", style="kdev.err")))
                 fix = "kdev tunnel setup --force"
-        ui.console.print(ui.facts(rows))
+        ui.card(
+            Text.assemble((ui.g("live") + " ", "kdev.ok"), ("named tunnel", "bold")),
+            rows,
+            tone="err" if fix else "muted",
+        )
         if fix:
-            ui.blank()
             ui.next_steps([(fix, "point the hostname back at the tunnel")])
     elif cfg.tunnel_token:
-        ui.console.print(
-            ui.facts(
-                [
-                    ("kind", "managed in the Cloudflare dashboard"),
-                    ("host", cfg.tunnel_hostname or Text("not set", style="kdev.warn")),
-                ]
-            )
+        ui.card(
+            Text("dashboard tunnel", style="bold"),
+            [
+                ("kind", "managed in the Cloudflare dashboard"),
+                ("host", cfg.tunnel_hostname or Text("not set", style="kdev.warn")),
+            ],
         )
     else:
-        ui.console.print(
-            ui.facts([("kind", Text("quick: a new hostname every session", style="kdev.warn"))])
+        ui.card(
+            Text("quick tunnel", style="bold"),
+            [("kind", Text("a new hostname every session", style="kdev.warn"))],
+            tone="warn",
         )
-        ui.blank()
         ui.next_steps([("kdev tunnel setup", "one hostname that survives drops")])
 
 

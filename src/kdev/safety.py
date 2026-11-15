@@ -54,6 +54,19 @@ def prune(prefix: str, keep: int = KEEP_BACKUPS) -> None:
         path.unlink(missing_ok=True)
 
 
+def missing(e: api.KaggleError, creds: api.Creds, slug: str) -> bool:
+    """Whether a failed GetKernel means the notebook is not there.
+
+    Kaggle answers 403 "Permission 'kernels.get' was denied", not 404, for a
+    slug that does not exist in your own namespace (measured). In anyone
+    else's, a 403 may just mean "not shared with you", so only 404 counts.
+    """
+    if e.status == 404:
+        return True
+    owner = slug.partition("/")[0]
+    return e.status == 403 and bool(owner) and owner.lower() == creds.username.lower()
+
+
 def check(creds: api.Creds, slug: str) -> tuple[str, str, Path | None]:
     """Classify a notebook before kdev writes to it.
 
@@ -62,7 +75,11 @@ def check(creds: api.Creds, slug: str) -> tuple[str, str, Path | None]:
     """
     try:
         source = api.kernel_source(creds, slug)
-    except api.KaggleError:
+    except api.KaggleError as e:
+        if not missing(e, creds, slug):
+            # Offline, signed out, Kaggle down: the notebook may well exist
+            # and hold work. "Could not look" is never "nothing there".
+            raise
         # A notebook that does not exist yet is safe to create.
         return "safe", "", None
 

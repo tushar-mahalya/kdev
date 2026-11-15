@@ -113,6 +113,7 @@ def export_env():
     ssh_env.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     ssh_env.write_text("".join(f"{k}={v}\n" for k, v in env.items()))
     ssh_env.chmod(0o600)
+    _pam_path(env.get("PATH", ""))
 
     # Also kept as a sourceable file, for scripts that start from a clean env.
     pathlib.Path("/root/.kdev_env.sh").write_text(
@@ -124,9 +125,26 @@ def export_env():
             f.write(hook)
 
 
+def _pam_path(path):
+    """sshd applies ~/.ssh/environment, then PAM's pam_env sets PATH again from
+    /etc/environment -- measured: a non-interactive ssh had no /opt/bin, so no
+    nvidia-smi, and VS Code's server no CUDA. Give pam_env the notebook's PATH."""
+    if not path or '"' in path:
+        return
+    etc = pathlib.Path("/etc/environment")
+    try:
+        lines = etc.read_text().splitlines() if etc.exists() else []
+        kept = [ln for ln in lines if not ln.startswith("PATH=")]
+        etc.write_text("\n".join(kept + [f'PATH="{path}"']) + "\n")
+    except OSError as e:
+        print(f"could not set PATH for ssh sessions: {e}", flush=True)
+
+
 def add_env(name, value):
     """Add one variable to every future ssh session."""
     os.environ[name] = value
+    if name == "PATH":
+        _pam_path(value)
     with pathlib.Path("/root/.ssh/environment").open("a") as f:
         f.write(f"{name}={value}\n")
     with pathlib.Path("/root/.kdev_env.sh").open("a") as f:

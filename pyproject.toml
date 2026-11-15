@@ -28,6 +28,9 @@ dependencies = [
     "kaggle>=2.2,<3",
     "typer>=0.27,<1",
     "questionary>=2.0,<3",
+    # The home menu is a small prompt_toolkit app of its own (questionary is
+    # built on it too).
+    "prompt-toolkit>=3.0.36,<4",
     "rich>=13,<16",
 ]
 

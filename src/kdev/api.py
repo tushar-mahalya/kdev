@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import logging
+import random
+import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -81,6 +83,41 @@ class Creds:
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 
 
+_pool: httpx.Client | None = None
+_pool_lock = threading.Lock()
+
+
+def _post(url: str, **kwargs: Any) -> httpx.Response:
+    """POST over one shared keep-alive pool: a fresh TLS handshake per call
+    cost ~0.3s each, and a status check makes several calls in a row. Tests
+    patch `httpx.post`, so a patched one is honoured."""
+    global _pool
+    if httpx.post is not _REAL_POST:
+        return httpx.post(url, **kwargs)
+    with _pool_lock:
+        if _pool is None:
+            _pool = httpx.Client(timeout=120.0, limits=httpx.Limits(max_keepalive_connections=8))
+    return _pool.post(url, **kwargs)
+
+
+_REAL_POST = httpx.post
+
+#: Extra tries a retryable call gets when Kaggle answers 429.
+RATE_LIMIT_EXTRA = 2
+
+
+def _backoff(r: httpx.Response, attempt: int) -> float:
+    """Kaggle's Retry-After when it sends one (capped), else exponential with
+    jitter -- so threads that were limited together do not return together."""
+    try:
+        after = float((getattr(r, "headers", None) or {}).get("retry-after", ""))
+    except ValueError:
+        after = 0.0
+    if after > 0:
+        return min(after, 30.0)
+    return 2**attempt + random.uniform(0, 1)
+
+
 def call(
     creds: Creds,
     method: str,
@@ -89,16 +126,23 @@ def call(
     attempts: int = 3,
 ) -> dict:
     url = f"{BASE}/{service}/{method}"
-    for attempt in range(attempts):
-        last = attempt == attempts - 1
+    # Two budgets. Failures (no answer, 5xx) get the caller's `attempts`.
+    # Rate limiting is Kaggle asking us to slow down, not failing: a call that
+    # may be retried at all gets RATE_LIMIT_EXTRA more tries for a 429 only,
+    # so being offline still fails fast.
+    tries = 0
+    limited = 0
+    while True:
+        tries += 1
+        last = tries >= attempts
         started = time.monotonic()
         try:
-            r = httpx.post(url, json=payload or {}, headers=creds.headers, timeout=120.0)
+            r = _post(url, json=payload or {}, headers=creds.headers, timeout=120.0)
         except httpx.HTTPError as e:
-            log.debug("%s as %s: %s (attempt %d)", method, creds.username, e, attempt + 1)
+            log.debug("%s as %s: %s (attempt %d)", method, creds.username, e, tries)
             if last:
                 raise KaggleError(f"{method}: could not reach Kaggle ({e})") from e
-            time.sleep(2**attempt)
+            time.sleep(2 ** (tries - 1))
             continue
         log.debug(
             "%s as %s -> %d in %.2fs",
@@ -107,8 +151,13 @@ def call(
             r.status_code,
             time.monotonic() - started,
         )
+        if r.status_code == 429 and attempts > 1 and limited < RATE_LIMIT_EXTRA:
+            limited += 1
+            tries -= 1  # a rate-limited try does not spend the failure budget
+            time.sleep(_backoff(r, limited))
+            continue
         if r.status_code in RETRY_STATUS and not last:
-            time.sleep(2**attempt)
+            time.sleep(_backoff(r, tries - 1))
             continue
         break
     if r.status_code == 401:
@@ -128,9 +177,11 @@ def call(
 def _message(r: httpx.Response) -> str:
     """Kaggle's own error message, not the JSON envelope around it."""
     try:
-        err = (r.json() or {}).get("error")
+        body = r.json()
     except ValueError:
-        err = None
+        body = None
+    # A proxy or an outage page can answer with any JSON at all, or none.
+    err = body.get("error") if isinstance(body, dict) else None
     if isinstance(err, dict) and err.get("message"):
         return f"{err['message']} (HTTP {r.status_code})"
     return f"HTTP {r.status_code}: {r.text[:200]}"
@@ -169,12 +220,15 @@ def save_kernel(
 
 #: The most ListKernelSessionOutput accepts per page (it says so on a 400).
 OUTPUT_PAGE = 500
+#: The first page of a prefix read: enough for `.kdev/` when it sorts first.
+PREFIX_PAGE = 50
 
 
-def session_output(creds: Creds, slug: str, version: str = "") -> list[dict]:
+def session_output(creds: Creds, slug: str, version: str = "", *, prefix: str = "") -> list[dict]:
     """Every file a saved version left in /kaggle/working, with signed URLs.
 
-    `version` is a label like "v7"; empty means the latest. Older versions stay
+    `version` is a label like "v7"; empty means the latest. With `prefix`,
+    paging stops once every name under it has been listed (see `_past`). Older versions stay
     readable, which is what lets a restore build on the last good one when the
     newest was cut short. A notebook cannot mount its own output (Kaggle
     rejects the data source), so this listing is the only way back.
@@ -182,8 +236,13 @@ def session_output(creds: Creds, slug: str, version: str = "") -> list[dict]:
     user, _, kslug = slug.partition("/")
     out = []
     token = None
+    # A prefix read wants the first names only: a small page answers faster.
+    # If that page does not get past the prefix (a `.git/` or `.cache/` at the
+    # root sorts before `.kdev/`), start over at the full size rather than
+    # walk thousands of names fifty at a time.
+    size = PREFIX_PAGE if prefix else OUTPUT_PAGE
     while True:
-        payload = {"userName": user, "kernelSlug": kslug, "pageSize": OUTPUT_PAGE}
+        payload = {"userName": user, "kernelSlug": kslug, "pageSize": size}
         if version:
             payload["versionLabel"] = version
         if token:
@@ -196,6 +255,21 @@ def session_output(creds: Creds, slug: str, version: str = "") -> list[dict]:
         token = resp.get("nextPageToken")
         if not token:
             return out
+        if size == PREFIX_PAGE and not _past(resp.get("files") or [], prefix):
+            out, token, size = [], None, OUTPUT_PAGE
+            continue
+        if prefix and _past(resp.get("files") or [], prefix):
+            # Only the names under `prefix` must be complete, and Kaggle lists
+            # names in order (measured): a sorted page that ends beyond the
+            # prefix means no later page holds one. The listing returned is
+            # partial -- complete under `prefix`, a sample of the rest.
+            return out
+
+
+def _past(page: list[dict], prefix: str) -> bool:
+    """Whether a page is sorted and ends after every name starting `prefix`."""
+    names = [str(f.get("fileName") or "") for f in page]
+    return bool(names) and names == sorted(names) and names[-1] > prefix + "\U0010ffff"
 
 
 #: The status of a notebook that has never been run. Kaggle answers that with
@@ -286,7 +360,15 @@ def stream_logs(
                 if idle is None:
                     raise
         else:
-            for entry in json.loads(r.read() or b"[]"):
+            try:
+                entries = json.loads(r.read() or b"[]")
+            except ValueError as e:
+                raise KaggleError(
+                    "logs: Kaggle sent something that is not JSON", r.status_code
+                ) from e
+            if not isinstance(entries, list):
+                entries = [entries]
+            for entry in entries:
                 yield _log_text(entry)
 
 
@@ -327,7 +409,10 @@ def share_with_group(
     bindings = [dict(b) for b in policy.get("bindings") or []]
 
     def is_our_group(member: dict) -> bool:
-        return (member.get("group") or {}).get("slug") == group_slug
+        # GetIamPolicy leaves `group.slug` null and puts it on `group.avatar`
+        # (see policy_groups); a binding we wrote ourselves has it at the top.
+        g = member.get("group") or {}
+        return group_slug in (g.get("slug"), (g.get("avatar") or {}).get("slug"))
 
     for b in bindings:
         b["members"] = [m for m in (b.get("members") or []) if not is_our_group(m)]

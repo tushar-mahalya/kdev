@@ -500,6 +500,7 @@ source = { editable = "." }
 dependencies = [
     { name = "httpx" },
     { name = "kaggle" },
+    { name = "prompt-toolkit" },
     { name = "questionary" },
     { name = "rich" },
     { name = "typer" },
@@ -518,6 +519,7 @@ dev = [
 requires-dist = [
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "kaggle", specifier = ">=2.2,<3" },
+    { name = "prompt-toolkit", specifier = ">=3.0.36,<4" },
     { name = "questionary", specifier = ">=2.0,<3" },
     { name = "rich", specifier = ">=13,<16" },
     { name = "typer", specifier = ">=0.27,<1" },

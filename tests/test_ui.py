@@ -162,14 +162,14 @@ def test_header_shows_compact_multicolour_logo_in_a_colour_terminal(monkeypatch)
         theme=ui.THEME,
     )
     monkeypatch.setattr(ui, "console", terminal)
-    ui.header("up", [("tunnel", "box.example.com")])
+    ui.header("setup", [("tunnel", "box.example.com")])
 
     text = terminal.export_text()
     lines = text.splitlines()
     assert len(lines[: lines.index("")]) == 5
     assert all(len(line) <= terminal.width for line in lines)
     assert any(char in text for char in "█▀▄")
-    assert "up  ·  v" in text and "box.example.com" in text
+    assert "setup  ·  v" in text and "box.example.com" in text
     for rgb in ("0;184;212", "67;213;237", "33;142;255"):
         assert rgb in output.getvalue()
 
@@ -197,10 +197,11 @@ def test_header_uses_plain_title_when_pixel_art_cannot_render(monkeypatch, limit
         theme=ui.THEME,
     )
     monkeypatch.setattr(ui, "console", terminal)
-    ui.header("status")
+    ui.header("setup")
 
     text = terminal.export_text()
-    assert text.lstrip().startswith("kdev") and "status" in text
+    first = text.lstrip().splitlines()[0]
+    assert first.startswith(("kdev", "›_ kdev")) and "setup" in first
     assert not any(char in text for char in "█▀▄")
 
 
@@ -223,14 +224,14 @@ def test_header_uses_compact_mascot_without_wrapping(monkeypatch, width):
         theme=ui.THEME,
     )
     monkeypatch.setattr(ui, "console", terminal)
-    ui.header("status")
+    ui.header("setup")
 
     lines = terminal.export_text().splitlines()
     compact = ui._logo(compact=True).plain.splitlines()
     assert len(lines[: lines.index("")]) == len(compact) == 4
     assert [line[ui.GUTTER :] for line in lines[:4]] == compact
     assert all(len(line) <= width for line in lines)
-    assert "kdev · status" in "\n".join(lines)
+    assert "kdev  setup" in "\n".join(lines)
 
 
 def test_logo_uses_terminal_foreground_for_light_and_dark_themes():
@@ -270,14 +271,31 @@ def test_header_scope_suppresses_duplicate_logos_and_resets_after_errors(monkeyp
     monkeypatch.setattr(ui, "console", terminal)
     with pytest.raises(RuntimeError), ui.command_header_scope():
         ui.header("setup")
-        ui.header("up")
+        ui.header("")
         raise RuntimeError("cancelled setup")
     with ui.command_header_scope():
-        ui.header("status")
+        ui.header("overview")
 
     text = terminal.export_text()
     assert text.count(ui._logo().plain.splitlines()[0].strip()) == 2
-    assert "setup" in text and "up" in text and "status" in text
+    assert "setup" in text and "overview" in text
+
+
+def test_subcommands_get_a_one_line_header_with_their_context(monkeypatch):
+    from io import StringIO
+
+    from rich.console import Console
+
+    from kdev import ui
+
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm")
+    terminal = Console(file=StringIO(), width=100, force_terminal=True, record=True, theme=ui.THEME)
+    monkeypatch.setattr(ui, "console", terminal)
+    ui.header("up", [("account", "alice"), ("tunnel", "box.example.com")])
+    lines = terminal.export_text().splitlines()
+    assert "kdev › up" in lines[0] and "box.example.com" in lines[0]
+    assert not any(char in "".join(lines) for char in "█▀▄")
 
 
 def test_terminal_only_header_leaves_piped_output_untouched(monkeypatch):
@@ -383,7 +401,7 @@ def test_terminal_stage_board_keeps_failure_pending_stages_and_timings(monkeypat
     compact = "".join(line.strip(" │|") for line in text.splitlines())
     assert "Couldnotrestoresavedfiles" in "".join(compact.split())
     assert ui.g("err") in text and ui.g("pending") in text
-    assert "1/3 complete" in text and "Connect SSH" in text
+    assert "stopped at restore" in text and "Connect SSH" in text
     assert stage.done == ["a"]
 
 
@@ -453,7 +471,8 @@ def test_prompt_redesign_preserves_values_defaults_secrets_and_cancellation(monk
     monkeypatch.setattr(ui, "interactive", lambda: True)
     choices = [ui.Choice("Keep files", value="keep"), ui.Choice("Replace files", value="replace")]
     assert ui.select("Files?", choices) == "keep"
-    assert calls[0][2]["choices"] is choices
+    assert [c.value for c in calls[0][2]["choices"]] == ["keep", "replace"]
+    assert calls[0][2]["choices"][0].title == "1  Keep files"
     assert [choice.value for choice in choices] == ["keep", "replace"]
     assert ui.confirm("Replace?", default=False) is False
     assert calls[1][2]["default"] is False
@@ -466,3 +485,43 @@ def test_prompt_redesign_preserves_values_defaults_secrets_and_cancellation(monk
     monkeypatch.setattr(ui, "interactive", lambda: False)
     assert ui.confirm("Replace?", default=False) is False
     assert len(calls) == 5
+
+
+def test_a_digit_picks_its_row_at_once():
+    from prompt_toolkit.input import create_pipe_input
+    from prompt_toolkit.output import DummyOutput
+
+    from kdev import ui
+
+    with create_pipe_input() as pipe:
+        real = ui.questionary.select
+
+        def select(*a, **kw):
+            return real(*a, input=pipe, output=DummyOutput(), **kw)
+
+        with patch.object(ui.questionary, "select", select):
+            pipe.send_text("2")
+            assert (
+                ui.select("Which?", [ui.Choice("A", value="a"), ui.Choice("B", value="b")]) == "b"
+            )
+
+
+def test_step_timings_are_remembered_only_for_complete_own_runs(monkeypatch, tmp_path):
+    from kdev import config, ui
+
+    monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(ui, "interactive", lambda: True)
+
+    def run(record=True, finish=True):
+        with ui.Stages([("a", "A"), ("b", "B")]) as board:
+            board.record = record
+            board.advance("a")
+            board.advance("b")
+            if finish:
+                board.finish()
+
+    run(record=False)
+    run(finish=False)
+    assert not (tmp_path / "timings.json").exists()
+    run()
+    assert set(ui._load_timings()) == {"a", "b"}

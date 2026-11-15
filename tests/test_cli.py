@@ -14,7 +14,7 @@ from datetime import datetime
 import pytest
 from rich.text import Text
 
-from kdev import api, auth, cli, config, persistence, session, sshcfg, ui
+from kdev import api, auth, cli, config, menu, persistence, session, sshcfg, ui
 
 
 class FakeKaggle:
@@ -70,7 +70,7 @@ class FakeKaggle:
         )
         mp(api, "kernel_id", lambda c, s: 42)
         mp(api, "kernel_source", lambda c, s: self.source)
-        mp(api, "session_output", lambda c, s, v="": list(self.outputs.get(v, [])))
+        mp(api, "session_output", lambda c, s, v="", **kw: list(self.outputs.get(v, [])))
         mp(
             api,
             "quota",
@@ -265,11 +265,17 @@ def colour_terminal(monkeypatch):
         ("workspace", "files"),
     ],
 )
-def test_commands_show_the_logo_once(home, kaggle, capsys, colour_terminal, argv):
+def test_commands_show_one_header(home, kaggle, capsys, colour_terminal, argv):
+    """The front door shows the logo once; every other command one brand line."""
     configured()
     code, out, err = kdev(capsys, *argv)
     assert code == 0, err
-    assert Text.from_ansi(out).plain.count(ui._logo().plain.splitlines()[0].strip()) == 1
+    text = Text.from_ansi(out).plain
+    logos = text.count(ui._logo().plain.splitlines()[0].strip())
+    if argv:
+        assert logos == 0 and text.count("›_ kdev") == 1
+    else:
+        assert logos == 1
 
 
 @pytest.mark.parametrize(
@@ -303,12 +309,17 @@ def test_menu_dispatch_does_not_repeat_the_logo(home, kaggle, capsys, colour_ter
     configured()
     kaggle.status = "RUNNING"
     monkeypatch.setattr(ui, "interactive", lambda: True)
-    monkeypatch.setattr(ui, "choose", lambda *args, **kwargs: "status")
+    from kdev.commands import home as home_cmd
+
+    monkeypatch.setattr(home_cmd, "_rows", lambda: 40)  # tall enough for the logo
+    picks = iter([menu.Item("s", "Status", ("status",)), None])
+    monkeypatch.setattr(menu.Menu, "run", lambda self: next(picks))
     code, out, err = kdev(capsys)
     assert code == 0, err
     text = Text.from_ansi(out).plain
     assert text.count(ui._logo().plain.splitlines()[0].strip()) == 1
-    assert "kdev · status" in text
+    assert text.count("kdev › status") == 1, "the pick is the header, printed once"
+    assert "stopped" in text or "running" in text
 
 
 @pytest.mark.parametrize("remote_args", [(), ("-T", "printf hello")])
@@ -334,7 +345,7 @@ def test_ssh_brands_the_shell_and_preserves_remote_command_output(
     if remote_args:
         assert out == "remote output\n"
     else:
-        assert Text.from_ansi(out).plain.count(ui._logo().plain.splitlines()[0].strip()) == 1
+        assert Text.from_ansi(out).plain.count("›_ kdev › ssh") == 1
 
 
 @pytest.mark.parametrize("argv", [("config",), ("status",), ("account",), ("workspace", "files")])
@@ -357,10 +368,11 @@ def test_nothing_configured_says_how_to_start(home, capsys):
 
 def test_the_overview_shows_the_box_and_every_account(home, kaggle, capsys):
     configured()
-    code, out, _ = kdev(capsys)
+    code, out, err = kdev(capsys)
     assert code == 0
     assert "stopped" in out and "alice" in out and "bob" in out
-    assert "kdev up" in out  # the next step, when not in a terminal
+    assert "kdev up" in err  # the next step: advice, so on stderr when piped
+    assert "kdev up" not in out
 
 
 @pytest.mark.skipif(not hasattr(time, "tzset"), reason="changing the process timezone needs tzset")
@@ -487,8 +499,10 @@ def test_history_json_is_machine_readable(home, kaggle, capsys):
 
 def test_account_lists_quota(home, kaggle, capsys):
     configured()
-    code, out, _ = kdev(capsys, "account")
-    assert code == 0 and "29.0h" in out and "58.0h of GPU left across 2" in out
+    code, out, err = kdev(capsys, "account")
+    assert code == 0 and "29.0h" in out and "58.0h of GPU left across 2" in err
+    rows = [line.split("\t") for line in out.strip().splitlines()]
+    assert rows[0][:2] == ["active", "account"] and [r[1] for r in rows[1:]] == ["alice", "bob"]
 
 
 def test_account_json_is_machine_readable(home, kaggle, capsys):
@@ -910,7 +924,7 @@ def test_home_finds_winner_hidden_by_cancelled_latest(home, kaggle, capsys):
     kaggle.statuses["v4"] = "RUNNING"
     code, out, err = kdev(capsys)
     assert code == 0, err
-    assert "running" in out and "kdev down" in out
+    assert "running" in out and "kdev down" in err
 
 
 def test_status_reports_hidden_winner_save_as_stopping(home, kaggle, capsys):
@@ -1236,7 +1250,7 @@ def test_a_command_picked_from_the_menu_keeps_its_exit_status(home, kaggle, caps
     kaggle.status = "RUNNING"
     monkeypatch.setattr(session, "reachable", lambda alias, timeout=10: True)
     monkeypatch.setattr(ui, "interactive", lambda: True)
-    monkeypatch.setattr(ui, "choose", lambda q, options: "ssh")
+    monkeypatch.setattr(menu.Menu, "run", lambda self: menu.Item("2", "Open a shell", ("ssh",)))
     monkeypatch.setattr("subprocess.run", lambda *a, **k: type("R", (), {"returncode": 5})())
     sshcfg.write("kaggle", "box.example.com")
     assert kdev(capsys)[0] == 5
