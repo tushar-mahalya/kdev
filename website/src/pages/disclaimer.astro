@@ -1,0 +1,73 @@
+---
+import Legal from '../layouts/Legal.astro';
+import { site, links } from '../data/site';
+---
+
+<Legal
+  title="Disclaimer"
+  eyebrow="Unofficial · research and education"
+  description="kdev is an independent, unofficial open-source tool, made for research and educational purposes. Read this before you use it."
+  updated="2026-11-15"
+>
+  <blockquote>
+    <p><strong>kdev is not an official Kaggle, Google or Cloudflare product.</strong> It is not affiliated with, endorsed by, sponsored by or supported by Kaggle, Google LLC, Cloudflare, Inc., or any of their affiliates.</p>
+    <p>It is provided for research and educational purposes only.</p>
+  </blockquote>
+
+  <h2 id="what">What kdev is</h2>
+  <p>
+    kdev is a command-line tool, released under the <a href={links.license}>MIT licence</a>, that uses Kaggle's public API and Cloudflare Tunnel to run a
+    Kaggle notebook session as a remote development machine. Its source is public at <a href={site.repo}>github.com/tushar-mahalya/kdev</a>. It
+    was built to study and document how notebook sessions, saved versions and outbound tunnels behave, and to teach the techniques involved.
+  </p>
+
+  <h2 id="your-responsibility">Your responsibility</h2>
+  <p>You alone are responsible for how you use kdev and for the accounts you use it with. Before you run it:</p>
+  <ul>
+    <li>
+      <strong>Read and follow Kaggle's Terms of Use and community guidelines.</strong> Kaggle allows one account per person and restricts
+      tunnelling out of notebooks. Accounts have been banned for both. kdev does nothing to hide what it does, and it cannot make a use acceptable
+      that the terms forbid.
+    </li>
+    <li><strong>Read and follow Cloudflare's terms</strong> for any account, domain or tunnel you connect.</li>
+    <li>
+      <strong>Use only accounts you are entitled to use.</strong> Pooling quota across a Kaggle group means accounts that belong to real, distinct
+      people who have each agreed to it. Do not create or borrow accounts to get more compute.
+    </li>
+    <li>Do not use kdev to break any law, to attack or overload any service, or to get around any limit, quota or security control.</li>
+  </ul>
+  <p>If you are not sure that a use is allowed, don't run it until you are.</p>
+
+  <h2 id="trademarks">Names and trademarks</h2>
+  <p>
+    Kaggle is a trademark of Google LLC. Cloudflare is a trademark of Cloudflare, Inc. Visual Studio Code is a trademark of Microsoft Corporation.
+    Other names belong to their owners. They appear on this site only to describe what kdev works with, and their use implies no affiliation or
+    endorsement.
+  </p>
+
+  <h2 id="warranty">No warranty</h2>
+  <p>
+    kdev is provided "as is", without warranty of any kind, express or implied, including the warranties of merchantability, fitness for a
+    particular purpose and non-infringement, as the <a href={links.license}>MIT licence</a> states in full. The authors and contributors are not
+    liable for any claim, damages or other liability arising from the software or its use, including lost work, lost quota, suspended or banned
+    accounts, or data exposed through a misconfigured tunnel or notebook.
+  </p>
+  <p>
+    The crash-and-recovery behaviour described on this site was measured on Kaggle's platform as it behaved at the time. Kaggle and Cloudflare can
+    change their services at any moment, and kdev may stop working, or work differently, without notice. Keep your own copies of anything that
+    matters. A <code>git-remote</code> and <code>kdev backup</code> exist for that reason.
+  </p>
+
+  <h2 id="security">Security</h2>
+  <p>
+    Kaggle has no API for notebook Secrets, so the tunnel credentials (and a git deploy key, if you set one) are stored in the private notebook's
+    source, readable by anyone with Can Edit on it. Understand that before you share a workspace. Report vulnerabilities privately, as the
+    <a href={links.security}>security policy</a> describes.
+  </p>
+
+  <h2 id="this-site">This site</h2>
+  <p>
+    This website documents kdev. It is not run by Kaggle, Google or Cloudflare, and nothing on it is legal advice. See the
+    <a href="/privacy/">privacy notice</a> for what it does and doesn't collect.
+  </p>
+</Legal>

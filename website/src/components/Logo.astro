@@ -1,0 +1,68 @@
+---
+import { LOGO_ROWS } from '../data/site';
+
+interface Props {
+  variant?: 'full' | 'badge';
+  class?: string;
+  animate?: boolean;
+  label?: string;
+}
+const { variant = 'full', class: cls = '', animate = false, label = 'kdev' } = Astro.props;
+
+const fill: Record<string, string> = {
+  a: 'var(--logo-a, #00b8d4)',
+  h: 'var(--logo-h, #43d5ed)',
+  d: 'var(--logo-d, #218eff)',
+  f: 'currentColor',
+};
+const maxCol = variant === 'badge' ? 16 : Math.max(...LOGO_ROWS.map((r) => r.length));
+const cells: { x: number; y: number; c: string; i: number }[] = [];
+let i = 0;
+LOGO_ROWS.forEach((row, y) => {
+  [...row.slice(0, maxCol)].forEach((ch, x) => {
+    if (fill[ch]) cells.push({ x, y, c: fill[ch], i: i++ });
+  });
+});
+// A stable pseudo-random scatter so the assemble animation is identical on
+// every render (no hydration, no layout shift).
+const rand = (n: number) => {
+  const s = Math.sin(n * 12.9898) * 43758.5453;
+  return s - Math.floor(s);
+};
+---
+
+<svg
+  class:list={['logo', cls, { 'logo--assemble': animate }]}
+  viewBox={`-0.5 -0.5 ${maxCol + 1} ${LOGO_ROWS.length + 1}`}
+  role="img"
+  aria-label={label}
+  shape-rendering="crispEdges"
+>
+  {
+    cells.map((p) => (
+      <rect
+        x={p.x}
+        y={p.y}
+        width="1.02"
+        height="1.02"
+        fill={p.c}
+        style={animate ? `--dx:${((rand(p.i) - 0.5) * 30).toFixed(1)}px;--dy:${((rand(p.i + 99) - 0.5) * 30).toFixed(1)}px;--d:${(p.x * 18 + rand(p.i) * 160).toFixed(0)}ms` : undefined}
+      />
+    ))
+  }
+</svg>
+
+<style>
+  .logo { height: auto; overflow: visible; }
+  @media (prefers-reduced-motion: no-preference) {
+    .logo--assemble rect {
+      transform-box: fill-box;
+      animation: px-in 0.9s var(--ease) both;
+      animation-delay: var(--d);
+    }
+    :global(.foot__mark:not([data-inview])) .logo--assemble rect { animation-play-state: paused; }
+  }
+  @keyframes px-in {
+    from { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.2); }
+  }
+</style>

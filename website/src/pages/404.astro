@@ -1,0 +1,56 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Not found" description="This page doesn't exist." noindex>
+  <section class="nf">
+    <div class="wrap nf__inner">
+      <div class="nf__term panel" aria-hidden="true">
+        <p><span class="p">$</span> kdev restore <span class="u" data-nf-path>/this-page</span></p>
+        <p class="e">✗ No saved version has this file</p>
+        <p class="h">  walked back v14 → v1; nothing here, not even in a backup</p>
+        <p class="h">  next  <span class="c">cd /</span>  ·  <span class="c">open /docs</span></p>
+      </div>
+      <div class="nf__copy" data-enter>
+        <p class="nf__code"><span>4</span><span>0</span><span>4</span></p>
+        <h1 class="nf__h">This page didn't survive the session.</h1>
+        <p class="muted">Unlike your files, it was never saved. The link may be old, or mistyped.</p>
+        <div class="nf__cta">
+          <a class="btn btn--accent" href="/">Back to the start<span class="arrow" aria-hidden="true">→</span></a>
+          <a class="btn btn--ghost" href="/docs/">Open the docs</a>
+          <button class="btn btn--ghost" type="button" data-search-open>Search</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .nf { min-height: calc(100svh - var(--nav-h) - 120px); display: grid; align-items: center; padding-block: 64px; }
+  .nf__inner { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(32px, 6vw, 80px); align-items: center; }
+  .nf__term { padding: 22px 24px; font-family: var(--font-mono); font-size: 13.5px; line-height: 1.9; background: var(--term-bg); color: var(--term-ink); border-color: rgb(255 255 255 / 0.08); overflow: hidden; }
+  .nf__term p { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+  .p { color: #00b8d4; } .c { color: #43d5ed; } .e { color: #ff6262; } .h { color: var(--term-dim); }
+  .u { color: #fff; }
+  .nf__copy { display: grid; gap: 20px; justify-items: start; }
+  .nf__code { display: flex; gap: 6px; font-family: var(--font-pixel); font-size: clamp(4rem, 12vw, 8rem); line-height: 1; color: var(--accent-ink); }
+  @media (prefers-reduced-motion: no-preference) {
+    .nf__code span { animation: hop 2.4s var(--ease) infinite; }
+    .nf__code span:nth-child(2) { animation-delay: 0.15s; }
+    .nf__code span:nth-child(3) { animation-delay: 0.3s; }
+  }
+  @keyframes hop { 0%, 60%, 100% { transform: none; } 30% { transform: translateY(-10px); } }
+  .nf__h { font-size: clamp(1.8rem, 3.6vw, 2.6rem); letter-spacing: -0.035em; }
+  .nf__cta { display: flex; gap: 10px; flex-wrap: wrap; }
+  @media (max-width: 860px) {
+    .nf__inner { grid-template-columns: 1fr; }
+    .nf__term { order: 2; font-size: 12px; }
+  }
+</style>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    const el = document.querySelector('[data-nf-path]');
+    if (el) el.textContent = location.pathname.length > 40 ? location.pathname.slice(0, 39) + '…' : location.pathname;
+  });
+</script>

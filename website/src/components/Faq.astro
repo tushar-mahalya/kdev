@@ -1,0 +1,49 @@
+---
+import { faq } from '../data/faq';
+---
+
+<section class="section faq" id="faq" aria-labelledby="faq-h">
+  <div class="wrap faq__grid">
+    <header class="section__head faq__head">
+      <span class="eyebrow">Questions</span>
+      <h2 id="faq-h" class="h-section">Asked before<br /><span class="dim">you install.</span></h2>
+      <p class="lede">Still unsure? <a class="link" href="https://github.com/tushar-mahalya/kdev/discussions" rel="noopener">Ask in Discussions</a>.</p>
+    </header>
+    <div class="faq__list">
+      {faq.map((f, i) => (
+        <details class="qa" name="faq" open={i === 0}>
+          <summary><span>{f.q}</span><i aria-hidden="true"></i></summary>
+          <div class="qa__a"><p>{f.a}</p></div>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .faq { border-top: 1px solid var(--line); }
+  .faq__grid { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); gap: clamp(32px, 5vw, 72px); }
+  .faq__head { margin-bottom: 0; align-content: start; position: sticky; top: calc(var(--nav-h) + 32px); }
+  .faq__list { border-top: 1px solid var(--line); }
+  .qa { border-bottom: 1px solid var(--line); }
+  .qa summary { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 64px; padding: 14px 0; cursor: pointer; list-style: none; font-size: 1.1rem; font-weight: 550; letter-spacing: -0.015em; transition: color 0.2s; }
+  .qa summary::-webkit-details-marker { display: none; }
+  .qa summary:hover { color: var(--accent-ink); }
+  .qa i { position: relative; flex: none; width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--line-2); }
+  .qa i::before, .qa i::after { content: ''; position: absolute; left: 50%; top: 50%; width: 10px; height: 1.6px; margin: -0.8px 0 0 -5px; background: currentColor; border-radius: 2px; transition: transform 0.35s var(--ease); }
+  .qa i::after { transform: rotate(90deg); }
+  .qa[open] i::after { transform: rotate(0deg); }
+  .qa[open] i { border-color: var(--accent); color: var(--accent-ink); }
+  .qa__a { overflow: hidden; }
+  .qa__a p { padding: 0 48px 22px 0; color: var(--ink-2); line-height: 1.7; }
+  @supports (interpolate-size: allow-keywords) {
+    .faq { interpolate-size: allow-keywords; }
+    .qa::details-content { height: 0; overflow: clip; transition: height 0.4s var(--ease), content-visibility 0.4s allow-discrete; }
+    .qa[open]::details-content { height: auto; }
+  }
+  @media (max-width: 900px) {
+    .faq__grid { grid-template-columns: 1fr; }
+    .faq__head { position: static; }
+    .qa__a p { padding-right: 0; }
+  }
+</style>

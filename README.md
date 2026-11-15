@@ -14,10 +14,13 @@
   <a href="https://pypi.org/project/kdev-cli/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/kdev-cli?logo=python&logoColor=white&color=3776AB"></a>
   <a href="https://github.com/tushar-mahalya/kdev/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2ea44f"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/tushar-mahalya/kdev"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/tushar-mahalya/kdev/badge"></a>
+  <a href="https://kdev-cli.pages.dev"><img alt="Website" src="https://img.shields.io/badge/website-kdev--cli.pages.dev-00b8d4"></a>
   <a href="#contributing"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-00b8d4"></a>
 </p>
 
 <p align="center">
+  <a href="https://kdev-cli.pages.dev"><b>Website</b></a> ·
+  <a href="https://kdev-cli.pages.dev/docs/">Docs</a> ·
   <a href="#install-and-set-up">Install</a> ·
   <a href="#everyday-use">Everyday use</a> ·
   <a href="#your-files">Your files</a> ·

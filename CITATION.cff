@@ -12,7 +12,7 @@ authors:
     family-names: Sharma
     alias: tushar-mahalya
 repository-code: https://github.com/tushar-mahalya/kdev
-url: https://pypi.org/project/kdev-cli/
+url: https://kdev-cli.pages.dev
 license: MIT
 keywords:
   - kaggle

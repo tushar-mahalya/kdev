@@ -1,0 +1,36 @@
+{
+  "name": "kdev-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build && pagefind --site dist --output-subdir pagefind && node scripts/postbuild.mjs",
+    "preview": "wrangler pages dev dist",
+    "check": "astro check",
+    "deploy": "node scripts/predeploy.mjs && npm run build && wrangler pages deploy dist --project-name kdev-cli --branch main",
+    "browsers": "browsers install chrome-headless-shell@stable --path .cache/browsers",
+    "check:links": "node scripts/check-links.mjs"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "^3.7.5",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@fontsource/silkscreen": "^5.3.0",
+    "astro": "^7.4.12"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.12",
+    "@puppeteer/browsers": "^3.2.7",
+    "pagefind": "^1.6.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.162.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": true,
+    "workerd@1.20261113.1": true
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

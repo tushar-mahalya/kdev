@@ -1,0 +1,34 @@
+---
+import Base from './Base.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  eyebrow: string;
+  updated: string;
+}
+const { title, description, eyebrow, updated } = Astro.props;
+---
+
+<Base title={title} description={description}>
+  <article class="legal wrap" data-pagefind-body>
+    <header class="legal__head" data-enter>
+      <p class="eyebrow">{eyebrow}</p>
+      <h1 class="legal__h">{title}</h1>
+      <p class="legal__lede">{description}</p>
+      <p class="legal__date dim">Last updated <time datetime={updated}>{new Date(updated).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</time></p>
+    </header>
+    <div class="prose legal__body">
+      <slot />
+    </div>
+  </article>
+</Base>
+
+<style>
+  .legal { padding-block: clamp(48px, 8vw, 96px) clamp(80px, 10vw, 140px); }
+  .legal__head { display: grid; gap: 16px; max-width: 760px; padding-bottom: 36px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+  .legal__h { font-size: clamp(2.4rem, 5.6vw, 4rem); letter-spacing: -0.045em; }
+  .legal__lede { font-size: 1.15rem; color: var(--ink-2); max-width: 58ch; }
+  .legal__date { font-size: 14px; }
+  .legal__body { max-width: 72ch; }
+</style>

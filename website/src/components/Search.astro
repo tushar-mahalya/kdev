@@ -1,0 +1,40 @@
+<dialog class="search" data-search aria-label="Search the docs">
+  <form class="search__box" role="search" data-search-form>
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="9" cy="9" r="5.5"></circle><path d="m13.2 13.2 3.3 3.3" stroke-linecap="round"></path></svg>
+    <label class="sr-only" for="search-input">Search the docs</label>
+    <input id="search-input" type="search" placeholder="Search the docs: restore, quota, tunnel…" autocomplete="off" spellcheck="false" data-search-input />
+    <button type="button" class="search__esc" data-search-close aria-label="Close search">esc</button>
+  </form>
+  <div class="search__results" data-search-results aria-live="polite">
+    <p class="search__hint">Type to search every docs page. Results load from this site; nothing is sent anywhere.</p>
+  </div>
+</dialog>
+
+<style>
+  .search {
+    width: min(680px, calc(100% - 32px)); max-height: min(70vh, 640px); margin: 12vh auto auto; padding: 0;
+    border: 1px solid var(--line-2); border-radius: 16px; background: var(--panel); color: var(--ink);
+    box-shadow: 0 40px 120px -20px rgb(0 0 0 / 0.6); overflow: hidden;
+  }
+  .search[open] { display: flex; flex-direction: column; animation: pop 0.28s var(--ease); }
+  .search::backdrop { background: rgb(2 6 10 / 0.55); backdrop-filter: blur(6px); animation: fade 0.25s ease; }
+  @keyframes pop { from { opacity: 0; transform: translateY(-8px) scale(0.98); } }
+  @keyframes fade { from { opacity: 0; } }
+  .search__box { display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+  .search__box svg { width: 18px; height: 18px; color: var(--ink-3); flex: none; }
+  .search__box input {
+    flex: 1; min-width: 0; height: 58px; border: 0; outline: 0; background: none; color: var(--ink);
+    font: inherit; font-size: 17px;
+  }
+  .search__box input::-webkit-search-cancel-button { display: none; }
+  .search__esc { font-family: var(--font-mono); font-size: 11px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); color: var(--ink-3); min-height: 28px; }
+  .search__results { overflow-y: auto; padding: 8px; }
+  .search__hint { padding: 16px; color: var(--ink-3); font-size: 14px; }
+  .search__results :global(a) {
+    display: block; padding: 12px 14px; border-radius: 10px; transition: background 0.15s;
+  }
+  .search__results :global(a:hover), .search__results :global(a:focus-visible), .search__results :global(a[aria-selected='true']) { background: var(--accent-soft); outline: none; }
+  .search__results :global(.r-t) { font-weight: 600; font-size: 15px; }
+  .search__results :global(.r-x) { color: var(--ink-2); font-size: 13.5px; margin-top: 2px; line-height: 1.5; }
+  .search__results :global(mark) { background: none; color: var(--accent-ink); font-weight: 600; }
+</style>

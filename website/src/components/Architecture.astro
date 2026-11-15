@@ -1,0 +1,432 @@
+---
+import { lanes, nodes, edges, flows } from '../data/architecture';
+import { site } from '../data/site';
+
+const payload = JSON.stringify({ edges, flows, nodes: nodes.map(({ id, t, s, d, facts, src }) => ({ id, t, s, d, facts, src })) });
+---
+
+<dialog class="arch" id="architecture" data-arch aria-labelledby="arch-title">
+  <div class="arch__frame" data-arch-frame>
+    <header class="arch__top">
+      <div class="arch__title">
+        <span class="eyebrow">Architecture</span>
+        <h2 id="arch-title">How kdev is built</h2>
+      </div>
+      <div class="arch__tabs" role="tablist" aria-label="Flows">
+        <button type="button" role="tab" class="arch__tab" data-flow="" aria-selected="true">Map</button>
+        {flows.map((f) => <button type="button" role="tab" class="arch__tab" data-flow={f.id} aria-selected="false">{f.t}</button>)}
+      </div>
+      <button type="button" class="arch__close" data-arch-close aria-label="Close the architecture">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15" stroke-linecap="round"></path></svg>
+        <kbd>esc</kbd>
+      </button>
+    </header>
+
+    <div class="arch__body">
+      <div class="arch__canvas" data-arch-canvas>
+        <svg class="arch__wires" data-arch-wires aria-hidden="true">
+          <defs>
+            <marker id="arch-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 8 4 0 8z" fill="currentColor"></path></marker>
+          </defs>
+          <g data-arch-base></g>
+          <g data-arch-live></g>
+        </svg>
+        {lanes.map((l, li) => (
+          <section class="lane" data-lane={l.id} style={`--li:${li}`}>
+            <header class="lane__h"><b>{l.t}</b><span>{l.s}</span></header>
+            <div class="lane__nodes">
+              {nodes.filter((n) => n.lane === l.id).map((n, ni) => (
+                <button type="button" class="node" data-node-id={n.id} style={`--ni:${ni}`}>
+                  <span class="node__t">{n.t}</span>
+                  <span class="node__s">{n.s}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ))}
+        <svg class="arch__labels" data-arch-labels-svg aria-hidden="true"><g data-arch-labels></g></svg>
+      </div>
+
+      <aside class="arch__side" aria-live="polite">
+        <div class="side-flow" data-side-flow>
+          <p class="side__cmd" data-side-cmd></p>
+          <h3 class="side__h" data-side-title>The whole system</h3>
+          <p class="side__lede" data-side-lede>Four places, two dial-outs, no open port. Pick a flow above to watch it move, or a component to see what it does.</p>
+          <ol class="steps" data-side-steps role="list"></ol>
+          <div class="side__ctl" data-side-ctl hidden>
+            <button type="button" class="mini-btn" data-step-prev aria-label="Previous step">←</button>
+            <button type="button" class="mini-btn" data-step-play aria-label="Pause">❚❚</button>
+            <button type="button" class="mini-btn" data-step-next aria-label="Next step">→</button>
+          </div>
+        </div>
+        <div class="side-node" data-side-node hidden>
+          <button type="button" class="side__back" data-node-back>← Back</button>
+          <h3 class="side__h" data-node-title></h3>
+          <p class="side__sub" data-node-sub></p>
+          <p class="side__lede" data-node-desc></p>
+          <ul class="side__facts" data-node-facts role="list"></ul>
+          <a class="link side__src" data-node-src href={site.repo} rel="noopener">Read the source ↗</a>
+        </div>
+      </aside>
+    </div>
+  </div>
+  <script type="application/json" data-arch-data set:html={payload} />
+</dialog>
+
+<style>
+  .arch { width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: transparent; color: var(--ink); overflow: hidden; }
+  .arch::backdrop { background: rgb(2 5 8 / 0.6); backdrop-filter: blur(10px); }
+  .arch[open]::backdrop { animation: a-fade 0.35s ease both; }
+  @keyframes a-fade { from { opacity: 0; } }
+  .arch__frame {
+    position: absolute; inset: clamp(0px, 2vw, 24px); display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr);
+    background: var(--bg); border: 1px solid var(--line-2); border-radius: clamp(0px, 1.6vw, 20px); overflow: hidden;
+    box-shadow: 0 40px 140px -30px rgb(0 0 0 / 0.7);
+  }
+  .arch[open] .arch__frame { animation: a-in 0.5s var(--ease) both; }
+  :global(:root[data-arch-vt]) .arch[open] .arch__frame { animation: none; }
+  @keyframes a-in { from { opacity: 0; transform: translateY(18px) scale(0.985); } }
+  .arch__frame::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0.55;
+    background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 24px 24px; mask-image: radial-gradient(ellipse at 50% 40%, #000 30%, transparent 80%);
+  }
+
+  .arch__top { position: relative; z-index: 2; display: flex; align-items: center; gap: 20px; min-width: 0; padding: 14px clamp(14px, 2vw, 24px); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(10px); }
+  .arch__title { display: grid; gap: 2px; flex: none; }
+  .arch__title h2 { font-size: 1.15rem; letter-spacing: -0.02em; }
+  .arch__tabs { min-width: 0; display: flex; gap: 2px; padding: 3px; margin-left: auto; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); overflow-x: auto; scrollbar-width: none; }
+  .arch__tab { flex: none; min-height: 38px; padding: 0 12px; border-radius: 8px; font-size: 13.5px; color: var(--ink-2); white-space: nowrap; transition: background 0.2s, color 0.2s; }
+  .arch__tab:hover { color: var(--ink); }
+  .arch__tab[aria-selected='true'] { background: var(--ink); color: var(--bg); }
+  .arch__close { flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px; border-radius: 10px; color: var(--ink-2); transition: background 0.2s, color 0.2s; }
+  .arch__close:hover { background: var(--accent-soft); color: var(--ink); }
+  .arch__close svg { width: 18px; height: 18px; }
+  .arch__close kbd { font-size: 11px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 6px; }
+
+  .arch__body { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
+  .arch__canvas { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(20px, 3.4vw, 56px); padding: clamp(18px, 2.4vw, 32px); overflow: auto; align-content: start; min-width: 0; }
+  .arch__wires, .arch__labels { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+  .arch__wires { z-index: 0; }
+  .arch__labels { z-index: 2; }
+  .lane { position: relative; z-index: 1; display: grid; align-content: start; gap: 14px; min-width: 0; }
+  .lane__h { display: grid; gap: 2px; padding: 0 2px 10px; border-bottom: 1px dashed var(--line-2); }
+  .lane__h b { font-family: var(--font-pixel); font-weight: 400; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-ink); }
+  .lane__h span { font-size: 12.5px; color: var(--ink-3); }
+  .lane__nodes { display: grid; gap: clamp(18px, 4.2vh, 44px); padding-top: 10px; }
+  .node {
+    position: relative; display: grid; gap: 3px; text-align: left; padding: 12px 14px; border-radius: 12px; min-width: 0;
+    background: var(--panel); border: 1px solid var(--line-2);
+    transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s var(--ease);
+  }
+  .node:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .node__t { font-weight: 600; font-size: 14.5px; letter-spacing: -0.01em; transition: color 0.3s; }
+  .node__s { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-3); transition: color 0.3s; overflow-wrap: anywhere; }
+  .arch[data-active] .node:not(.on) { border-color: var(--line); }
+  .arch[data-active] .node:not(.on) .node__t { color: var(--ink-3); }
+  .arch[data-active] .node:not(.on) .node__s { color: color-mix(in srgb, var(--ink-3) 60%, transparent); }
+  .arch[data-active] .node.on { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft), 0 12px 30px -16px var(--accent-glow); }
+  .node.sel { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  @media (prefers-reduced-motion: no-preference) {
+    .arch[open] .node { animation: n-in 0.6s var(--ease) both; animation-delay: calc(120ms + var(--li, 0) * 70ms + var(--ni) * 50ms); }
+  }
+  @keyframes n-in { from { opacity: 0; transform: translateY(10px); } }
+
+  .arch__wires :global(.w) { fill: none; stroke: var(--line-2); stroke-width: 1.3; transition: stroke 0.3s, opacity 0.3s; }
+  .arch[data-active] .arch__wires :global(.w) { opacity: 0.35; }
+  .arch__wires :global(.w.hot) { stroke: color-mix(in srgb, var(--accent) 55%, transparent); opacity: 1; }
+  .arch__wires :global(.p) { fill: none; stroke: var(--accent); stroke-width: 2.6; stroke-linecap: round; color: var(--accent); stroke-dasharray: 18 14; animation: a-flow 1s linear infinite; filter: drop-shadow(0 0 4px var(--accent-glow)); }
+  @keyframes a-flow { to { stroke-dashoffset: -32; } }
+  @media (prefers-reduced-motion: reduce) { .arch__wires :global(.p) { animation: none; stroke-dasharray: none; } }
+  .arch__labels :global(.lbl rect) { fill: var(--bg); stroke: color-mix(in srgb, var(--accent) 50%, transparent); }
+  .arch__labels :global(.lbl text) { font-family: var(--font-mono); font-size: 10.5px; fill: var(--accent-ink); }
+
+  .arch__side { position: relative; border-left: 1px solid var(--line); padding: 22px; overflow-y: auto; background: color-mix(in srgb, var(--bg-2) 70%, transparent); }
+  .side__cmd { font-family: var(--font-mono); font-size: 13px; color: var(--accent-ink); min-height: 1em; }
+  .side__h { font-size: 1.35rem; letter-spacing: -0.025em; margin: 6px 0 8px; }
+  .side__sub { font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); margin-bottom: 10px; }
+  .side__lede { color: var(--ink-2); font-size: 14.5px; line-height: 1.6; }
+  .steps { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 4px; }
+  :global(.step-b) { display: grid; grid-template-columns: 26px 1fr; gap: 0 8px; width: 100%; text-align: left; padding: 10px; border-radius: 10px; transition: background 0.25s; }
+  :global(.step-b:hover) { background: var(--accent-soft); }
+  :global(.step-b .n) { font-family: var(--font-pixel); font-size: 10px; color: var(--ink-3); padding-top: 3px; }
+  :global(.step-b .t) { font-weight: 600; font-size: 14px; color: var(--ink-2); }
+  :global(.step-b .d) { grid-column: 2; font-size: 13.5px; color: var(--ink-2); line-height: 1.55; display: none; margin-top: 4px; }
+  :global(.step-b[aria-current='step']) { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+  :global(.step-b[aria-current='step'] .n) { color: var(--accent-ink); }
+  :global(.step-b[aria-current='step'] .t) { color: var(--ink); }
+  :global(.step-b[aria-current='step'] .d) { display: block; animation: s-rise 0.4s var(--ease); }
+  @keyframes s-rise { from { opacity: 0; transform: translateY(4px); } }
+  .side__ctl { display: flex; gap: 6px; margin-top: 14px; }
+  .mini-btn { width: 44px; height: 40px; border-radius: 9px; border: 1px solid var(--line); color: var(--ink-2); font-size: 12px; transition: border-color 0.2s, color 0.2s; }
+  .mini-btn:hover { border-color: var(--accent); color: var(--ink); }
+  .side__back { min-height: 40px; font-size: 13.5px; color: var(--ink-3); }
+  .side__back:hover { color: var(--ink); }
+  .side__facts { list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 6px; }
+  .side__facts :global(li) { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); }
+  .side__src { font-size: 14px; }
+
+  @media (max-width: 1080px) {
+    .arch__body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+    .arch__side { border-left: 0; border-top: 1px solid var(--line); max-height: 40dvh; }
+    .arch__title { display: none; }
+    .arch__tabs { margin-left: 0; }
+    .arch__close { margin-left: auto; }
+    .arch__close kbd { display: none; }
+  }
+  @media (max-width: 760px) {
+    .arch__top { gap: 8px; }
+    .arch__canvas { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px 18px; padding: 16px; }
+    .lane__nodes { gap: 14px; }
+    .node { padding: 10px 11px; }
+    .node__t { font-size: 13.5px; }
+    .node__s { font-size: 10.5px; }
+    .arch__side { padding: 16px; }
+  }
+</style>
+
+<script>
+  type Edge = { id: string; from: string; to: string; label?: string };
+  type Step = { e: string[]; t: string; d: string };
+  type Flow = { id: string; t: string; cmd: string; lede: string; steps: Step[] };
+  type Node = { id: string; t: string; s: string; d: string; facts?: string[]; src?: string };
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const REPO = 'https://github.com/tushar-mahalya/kdev/blob/main/';
+
+  function setup() {
+    const dlg = document.querySelector<HTMLDialogElement>('[data-arch]');
+    if (!dlg || dlg.dataset.ready) return;
+    dlg.dataset.ready = '1';
+    const data = JSON.parse(dlg.querySelector('[data-arch-data]')!.textContent!) as { edges: Edge[]; flows: Flow[]; nodes: Node[] };
+    const canvas = dlg.querySelector<HTMLElement>('[data-arch-canvas]')!;
+    const svg = dlg.querySelector<SVGSVGElement>('[data-arch-wires]')!;
+    const lsvg = dlg.querySelector<SVGSVGElement>('[data-arch-labels-svg]')!;
+    const gBase = svg.querySelector('[data-arch-base]')!;
+    const gLive = svg.querySelector('[data-arch-live]')!;
+    const gLbl = lsvg.querySelector('[data-arch-labels]')!;
+    const tabs = [...dlg.querySelectorAll<HTMLButtonElement>('[data-flow]')];
+    const nodeEls = new Map([...dlg.querySelectorAll<HTMLElement>('[data-node-id]')].map((n) => [n.dataset.nodeId!, n]));
+    const q = <T extends HTMLElement>(s: string) => dlg.querySelector<T>(s)!;
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const paths = new Map<string, string>();
+
+    let flow: Flow | null = null;
+    let step = 0;
+    let playing = !reduce;
+    let timer = 0;
+
+    const origin = () => { const c = canvas.getBoundingClientRect(); return [c.left - canvas.scrollLeft, c.top - canvas.scrollTop]; };
+    const anchor = (r: DOMRect, side: 'l' | 'r' | 't' | 'b') =>
+      side === 'l' ? [r.left, r.top + r.height / 2] : side === 'r' ? [r.right, r.top + r.height / 2] : side === 't' ? [r.left + r.width / 2, r.top] : [r.left + r.width / 2, r.bottom];
+
+    const layout = () => {
+      for (const s of [svg, lsvg]) { s.setAttribute('width', String(canvas.scrollWidth)); s.setAttribute('height', String(canvas.scrollHeight)); }
+      const [ox, oy] = origin();
+      const rowGap = parseFloat(getComputedStyle(dlg.querySelector('.lane__nodes')!).rowGap) || 32;
+      paths.clear();
+      gBase.replaceChildren();
+      for (const e of data.edges) {
+        const a = nodeEls.get(e.from)!.getBoundingClientRect();
+        const b = nodeEls.get(e.to)!.getBoundingClientRect();
+        const dx = b.left + b.width / 2 - (a.left + a.width / 2);
+        const dy = b.top + b.height / 2 - (a.top + a.height / 2);
+        let d: string;
+        const skipsLane = Math.abs(dx) > Math.max(a.width, b.width) * 1.6;
+        if (skipsLane) {
+          // Crosses a lane: drop into the gap under the row, run along it, rise into the target.
+          const sg = Math.sign(dx);
+          const [x1, y1] = anchor(a, sg > 0 ? 'r' : 'l');
+          const [x2, y2] = anchor(b, sg > 0 ? 'l' : 'r');
+          const my = Math.max(a.bottom, b.bottom) + rowGap / 2 - oy;
+          const s = 26 * sg;
+          d = `M${x1 - ox} ${y1 - oy} C${x1 - ox + s} ${y1 - oy}, ${x1 - ox + s} ${my}, ${x1 - ox + 2 * s} ${my} L${x2 - ox - 2 * s} ${my} C${x2 - ox - s} ${my}, ${x2 - ox - s} ${y2 - oy}, ${x2 - ox} ${y2 - oy}`;
+        } else if (Math.abs(dx) > Math.max(a.width, b.width) * 0.6) {
+          const [x1, y1] = anchor(a, dx > 0 ? 'r' : 'l');
+          const [x2, y2] = anchor(b, dx > 0 ? 'l' : 'r');
+          const k = Math.max(30, Math.abs(x2 - x1) * 0.45) * Math.sign(dx);
+          d = `M${x1 - ox} ${y1 - oy} C${x1 - ox + k} ${y1 - oy}, ${x2 - ox - k} ${y2 - oy}, ${x2 - ox} ${y2 - oy}`;
+        } else {
+          const down = dy > 0;
+          const [x1, y1] = anchor(a, down ? 'b' : 't');
+          const [x2, y2] = anchor(b, down ? 't' : 'b');
+          const gap = Math.abs(y2 - y1);
+          if (gap > a.height * 0.9) {
+            // Not neighbours: bow out into the lane gap, never across the next lane.
+            const [ax, ay] = anchor(a, 'r');
+            const [bx, by] = anchor(b, 'r');
+            d = `M${ax - ox} ${ay - oy} C${ax - ox + 46} ${ay - oy}, ${bx - ox + 46} ${by - oy}, ${bx - ox} ${by - oy}`;
+          } else {
+            const k = Math.max(16, gap * 0.4) * (down ? 1 : -1);
+            d = `M${x1 - ox} ${y1 - oy} C${x1 - ox} ${y1 - oy + k}, ${x2 - ox} ${y2 - oy - k}, ${x2 - ox} ${y2 - oy}`;
+          }
+        }
+        paths.set(e.id, d);
+        const p = document.createElementNS(NS, 'path');
+        p.setAttribute('d', d);
+        p.setAttribute('class', 'w');
+        p.dataset.edge = e.id;
+        gBase.appendChild(p);
+      }
+      paint();
+    };
+
+    const paint = () => {
+      const live = new Set(flow ? flow.steps[step].e : []);
+      gLive.replaceChildren();
+      gLbl.replaceChildren();
+      gBase.querySelectorAll<SVGPathElement>('.w').forEach((p) => p.classList.toggle('hot', live.has(p.dataset.edge!)));
+      const on = new Set<string>();
+      const [ox, oy] = origin();
+      const boxes = [...nodeEls.values()].map((n) => n.getBoundingClientRect());
+      for (const id of live) {
+        const e = data.edges.find((x) => x.id === id)!;
+        on.add(e.from); on.add(e.to);
+        if (!paths.has(id)) continue; // not laid out yet; layout() paints again
+        const p = document.createElementNS(NS, 'path');
+        p.setAttribute('d', paths.get(id)!);
+        p.setAttribute('class', 'p');
+        p.setAttribute('marker-end', 'url(#arch-arrow)');
+        gLive.appendChild(p);
+        if (e.label) {
+          const len = p.getTotalLength();
+          const w = e.label.length * 6.4 + 14;
+          const free = (pt: DOMPoint) => !boxes.some((r) => pt.x + w / 2 > r.left - ox - 4 && pt.x - w / 2 < r.right - ox + 4 && pt.y + 10 > r.top - oy && pt.y - 10 < r.bottom - oy);
+          const m = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8].map((t) => p.getPointAtLength(len * t)).find(free) ?? p.getPointAtLength(len / 2);
+          const g = document.createElementNS(NS, 'g');
+          g.setAttribute('class', 'lbl');
+          const r = document.createElementNS(NS, 'rect');
+          r.setAttribute('x', String(m.x - w / 2)); r.setAttribute('y', String(m.y - 9)); r.setAttribute('width', String(w)); r.setAttribute('height', '18'); r.setAttribute('rx', '9');
+          const t = document.createElementNS(NS, 'text');
+          t.textContent = e.label;
+          t.setAttribute('x', String(m.x)); t.setAttribute('y', String(m.y + 3.5)); t.setAttribute('text-anchor', 'middle');
+          g.append(r, t);
+          gLbl.appendChild(g);
+        }
+      }
+      nodeEls.forEach((el, id) => el.classList.toggle('on', on.has(id)));
+      dlg.toggleAttribute('data-active', !!flow);
+    };
+
+    const stepsEl = q<HTMLOListElement>('[data-side-steps]');
+    const renderSide = () => {
+      q('[data-side-flow]').hidden = false;
+      q('[data-side-node]').hidden = true;
+      nodeEls.forEach((el) => el.classList.remove('sel'));
+      q('[data-side-cmd]').textContent = flow?.cmd ? `$ ${flow.cmd}` : '';
+      q('[data-side-title]').textContent = flow ? flow.t : 'The whole system';
+      q('[data-side-lede]').textContent = flow ? flow.lede : 'Four places, two dial-outs, no open port. Pick a flow above to watch it move, or a component to see what it does.';
+      q('[data-side-ctl]').hidden = !flow;
+      stepsEl.replaceChildren(
+        ...(flow?.steps ?? []).map((s, i) => {
+          const li = document.createElement('li');
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'step-b';
+          if (i === step) b.setAttribute('aria-current', 'step');
+          b.innerHTML = '<span class="n"></span><span class="t"></span><span class="d"></span>';
+          b.querySelector('.n')!.textContent = String(i + 1).padStart(2, '0');
+          b.querySelector('.t')!.textContent = s.t;
+          b.querySelector('.d')!.textContent = s.d;
+          b.addEventListener('click', () => { setPlaying(false); go(i); });
+          li.appendChild(b);
+          return li;
+        }),
+      );
+    };
+    const go = (i: number) => {
+      if (!flow) return;
+      step = (i + flow.steps.length) % flow.steps.length;
+      stepsEl.querySelectorAll('.step-b').forEach((b, k) => (k === step ? b.setAttribute('aria-current', 'step') : b.removeAttribute('aria-current')));
+      paint();
+      schedule();
+    };
+    const schedule = () => { clearTimeout(timer); if (flow && playing && dlg.open) timer = window.setTimeout(() => go(step + 1), 4200); };
+    const setPlaying = (v: boolean) => {
+      playing = v;
+      const b = q<HTMLButtonElement>('[data-step-play]');
+      b.textContent = v ? '❚❚' : '▶';
+      b.setAttribute('aria-label', v ? 'Pause' : 'Play');
+      schedule();
+    };
+    const pick = (id: string) => {
+      flow = data.flows.find((f) => f.id === id) ?? null;
+      step = 0;
+      tabs.forEach((t) => t.setAttribute('aria-selected', String((t.dataset.flow || '') === id)));
+      renderSide();
+      paint();
+      schedule();
+    };
+    const showNode = (id: string) => {
+      const n = data.nodes.find((x) => x.id === id)!;
+      setPlaying(false);
+      q('[data-side-flow]').hidden = true;
+      q('[data-side-node]').hidden = false;
+      nodeEls.forEach((el, k) => el.classList.toggle('sel', k === id));
+      q('[data-node-title]').textContent = n.t;
+      q('[data-node-sub]').textContent = n.s;
+      q('[data-node-desc]').textContent = n.d;
+      q('[data-node-facts]').replaceChildren(...(n.facts ?? []).map((f) => { const li = document.createElement('li'); li.textContent = f; return li; }));
+      const a = q<HTMLAnchorElement>('[data-node-src]');
+      a.hidden = !n.src;
+      if (n.src) { a.href = REPO + n.src; a.textContent = `${n.src} ↗`; }
+      gBase.querySelectorAll<SVGPathElement>('.w').forEach((p) => {
+        const e = data.edges.find((x) => x.id === p.dataset.edge)!;
+        p.classList.toggle('hot', e.from === id || e.to === id);
+      });
+    };
+
+    tabs.forEach((t) => t.addEventListener('click', () => { setPlaying(!reduce); pick(t.dataset.flow || ''); }));
+    nodeEls.forEach((el, id) => el.addEventListener('click', () => showNode(id)));
+    q('[data-node-back]').addEventListener('click', () => { renderSide(); paint(); });
+    q('[data-step-prev]').addEventListener('click', () => { setPlaying(false); go(step - 1); });
+    q('[data-step-next]').addEventListener('click', () => { setPlaying(false); go(step + 1); });
+    q('[data-step-play]').addEventListener('click', () => setPlaying(!playing));
+
+    const ro = new ResizeObserver(() => dlg.open && layout());
+    ro.observe(canvas);
+    canvas.addEventListener('scroll', () => layout(), { passive: true });
+
+    const open = (fromEl?: HTMLElement | null, flowId = 'up') => {
+      if (dlg.open) return;
+      const doc = document as Document & { startViewTransition?: (cb: () => void) => { ready: Promise<void>; finished: Promise<void> } };
+      const frame = q('[data-arch-frame]');
+      const show = () => {
+        dlg.showModal();
+        document.documentElement.style.overflow = 'hidden';
+        if (fromEl) fromEl.style.viewTransitionName = '';
+        frame.style.viewTransitionName = 'arch-sheet';
+        pick(flowId);
+        requestAnimationFrame(layout);
+      };
+      if (doc.startViewTransition && fromEl && !reduce) {
+        fromEl.style.viewTransitionName = 'arch-sheet';
+        document.documentElement.setAttribute('data-arch-vt', '');
+        const vt = doc.startViewTransition(show);
+        vt.ready.catch(() => {});
+        vt.finished.catch(() => {}).finally(() => { frame.style.viewTransitionName = ''; document.documentElement.removeAttribute('data-arch-vt'); });
+      } else show();
+      if (location.hash !== '#architecture') history.replaceState(history.state, '', '#architecture');
+      // Fonts and the entrance animation move nodes: lay out again once settled.
+      setTimeout(layout, 450);
+      setTimeout(layout, 900);
+    };
+    dlg.addEventListener('close', () => {
+      clearTimeout(timer);
+      document.documentElement.style.overflow = '';
+      if (location.hash === '#architecture') history.replaceState(history.state, '', location.pathname + location.search);
+    });
+    q('[data-arch-close]').addEventListener('click', () => dlg.close());
+
+    document.querySelectorAll<HTMLElement>('[data-arch-open]').forEach((b) =>
+      b.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        const src = b.dataset.archFrom ? document.querySelector<HTMLElement>(b.dataset.archFrom) : b;
+        open(src, b.dataset.archOpen || 'up');
+      }),
+    );
+    if (location.hash === '#architecture') setTimeout(() => open(null), 300);
+    document.addEventListener('astro:before-swap', () => { clearTimeout(timer); ro.disconnect(); if (dlg.open) dlg.close(); }, { once: true });
+  }
+  document.addEventListener('astro:page-load', setup);
+</script>

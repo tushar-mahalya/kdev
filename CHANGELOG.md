@@ -7,6 +7,9 @@ All notable changes are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- A project website at https://kdev-cli.pages.dev: the docs with search, an
+  interactive architecture explorer and the changelog. The README, PyPI page and
+  citation now link to it.
 - Colour terminals show a five-line pixel kdev header with the command and
   version beside the terminal symbol, once per invocation, including setup and menu
   actions. Narrow terminals use the compact terminal badge;

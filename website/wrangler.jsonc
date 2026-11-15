@@ -1,0 +1,8 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Cloudflare Pages project: static files from dist/, served at kdev-cli.pages.dev.
+  // Pages serves 404.html for unknown paths and applies dist/_headers.
+  "name": "kdev-cli",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-11-15"
+}

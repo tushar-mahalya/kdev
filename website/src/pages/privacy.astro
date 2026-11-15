@@ -1,0 +1,71 @@
+---
+import Legal from '../layouts/Legal.astro';
+import { links } from '../data/site';
+---
+
+<Legal
+  title="Privacy"
+  eyebrow="Privacy notice"
+  description="This site collects nothing about you. The kdev CLI sends nothing to its authors. Here is exactly what each one does."
+  updated="2026-11-15"
+>
+  <h2 id="site">This website</h2>
+  <ul>
+    <li><strong>No analytics, no tracking, no ads.</strong> There are no analytics scripts, tracking pixels, advertising tags or embedded third-party widgets.</li>
+    <li><strong>No cookies.</strong> The site sets none.</li>
+    <li>
+      <strong>No third-party requests.</strong> Fonts, scripts, styles and images are all served from this site. Your browser does not contact
+      Google Fonts, a CDN or any other domain to show a page.
+    </li>
+    <li>
+      <strong>One preference, kept in your browser.</strong> If you switch between light and dark, the choice is saved in your browser's local
+      storage under <code>kdev-theme</code>. It never leaves your device. Clear site data to remove it.
+    </li>
+    <li><strong>Search runs locally.</strong> The docs search downloads a static index from this site and searches it in your browser. What you type is not sent anywhere.</li>
+  </ul>
+
+  <h2 id="hosting">Hosting</h2>
+  <p>
+    The site is static files served by Cloudflare Workers. To deliver any website, Cloudflare processes technical request data such as your IP
+    address, user agent and the page requested, and may keep it in short-lived logs for security and reliability under its own
+    <a href="https://www.cloudflare.com/privacypolicy/" rel="noopener">privacy policy</a>. This project does not turn on Workers logging or
+    analytics for the site. Like any Worker, the site's owner can see aggregate request counts in the Cloudflare dashboard; no
+    per-visitor logs are kept by this project.
+  </p>
+  <p>
+    Links to GitHub and PyPI take you to those services, which have their own privacy policies.
+  </p>
+
+  <h2 id="cli">The kdev command-line tool</h2>
+  <p>kdev has no telemetry. It sends no usage data, crash reports or identifiers to its authors or anyone else. It talks only to:</p>
+  <ul>
+    <li><strong>Kaggle's API</strong> (<code>api.kaggle.com</code>), as the accounts you sign in, to save and run your notebook, read quota, stream logs and list saved files.</li>
+    <li><strong>Cloudflare's API</strong> (<code>api.cloudflare.com</code>), when you run <code>kdev tunnel setup</code>, to create your tunnel and its DNS record in your own account.</li>
+    <li><strong>GitHub</strong>, once, to download Cloudflare's official <code>cloudflared</code> release when you don't already have it installed.</li>
+  </ul>
+  <p>
+    It also runs programs you already trust: the official <code>kaggle</code> CLI for the browser sign-in, <code>cloudflared</code> for
+    <code>tunnel setup</code>, and <code>ssh</code> and <code>rsync</code> to reach the box. Your SSH connection to the box travels through
+    Cloudflare's network; it stays encrypted end to end by SSH itself. The box, running on Kaggle, downloads <code>openssh-server</code> from the
+    container's package mirrors, <code>cloudflared</code> from GitHub, your saved files from Kaggle and, if you set one, your git remote.
+  </p>
+  <p>On your machine it keeps:</p>
+  <ul>
+    <li>settings in <code>~/.config/kdev/config.json</code>, readable only by you (mode 0600);</li>
+    <li>one Kaggle OAuth credential file per account in <code>~/.config/kdev/creds/</code>;</li>
+    <li>a <code>kaggle</code> host block in <code>~/.ssh/config</code>;</li>
+    <li>if you run <code>kdev backup</code>, a copy of the box's files in <code>~/.config/kdev/workspace</code>.</li>
+  </ul>
+  <p>
+    Set <code>KDEV_CONFIG_DIR</code> to move the first, second and last somewhere else. Inside your private Kaggle notebook, kdev stores your
+    tunnel credentials, an optional git deploy key and the SSH public keys of machines that have used the workspace. Anyone with Can Edit on that
+    notebook can read them.
+  </p>
+
+  <h2 id="changes">Changes and contact</h2>
+  <p>
+    If this changes, this page will say so and the date at the top will move. The site's source is public, so any change is visible in the
+    repository's history. Questions go to <a href={links.issues}>GitHub Issues</a>; anything sensitive goes through the
+    <a href={links.security}>private security report</a>.
+  </p>
+</Legal>

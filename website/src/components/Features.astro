@@ -1,0 +1,356 @@
+---
+import { machine, quota, stack, accelerators, measuredOn } from '../data/kaggle';
+// Every illustration is an SVG with a fixed viewBox or a measured component,
+// so it scales as one picture and cards in a row keep equal heights.
+const small = [
+  { icon: '/icons/visual-studio-code.svg', k: 'VS Code', t: 'Remote-SSH just works', d: 'The box is a host called kaggle in ~/.ssh/config. Open a folder, install extensions, debug on the GPU.' },
+  { icon: '/icons/cloudflare.svg', wide: true, k: 'tunnel', t: 'No open port', d: 'Both ends dial out to Cloudflare and meet at a hostname that never changes. Public-key auth only.' },
+  { icon: '/icons/git-icon.svg', k: 'git', t: 'A repo that keeps up', d: 'Set git-remote and the box clones it at boot, pushes every 15 minutes and once more at teardown.' },
+  { glyph: 'port', k: 'forward', next: true, t: 'Ports to localhost', d: 'kdev forward 8888 puts Jupyter, TensorBoard or your API on localhost, with a clear error if nothing listens.' },
+  { glyph: 'bell', k: 'warn', next: true, t: 'Warned before the end', d: 'Every open shell hears about it 15 and 5 minutes before the session runs out.' },
+  { glyph: 'json', k: 'json', t: 'Built for scripts', d: 'status, history, account and workspace files speak --json. Every prompt has a flag; NO_COLOR is honoured.' },
+];
+const GLYPH: Record<string, string> = {
+  port: '<path d="M4 7h10M4 7l3-3M4 7l3 3M20 17H10M20 17l-3-3M20 17l-3 3"/>',
+  bell: '<path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6M10 19a2 2 0 0 0 4 0"/>',
+  json: '<path d="M8 4c-2 0-2 2-2 4s-1 4-2 4c1 0 2 2 2 4s0 4 2 4M16 4c2 0 2 2 2 4s1 4 2 4c-1 0-2 2-2 4s0 4-2 4"/>',
+};
+
+const cells = Array.from({ length: 12 }, (_, i) => ({ c: i % 4, r: Math.floor(i / 4) }));
+const L = { x: 38, y: 88 };
+const R = { x: 398, y: 88 };
+const V = { x: 268, y: 140 };
+const S = 26;
+---
+
+<section class="section feat" id="features" aria-labelledby="feat-h">
+  <div class="wrap">
+    <header class="section__head">
+      <span class="eyebrow">What you get</span>
+      <h2 id="feat-h" class="h-section">A notebook that behaves like <span class="grad">a server you own.</span></h2>
+      <p class="lede">Kaggle's API can save a notebook and run it. It has no "give me a shell" call. kdev adds that, then fixes what makes a notebook a bad place to keep work.</p>
+    </header>
+
+    <div class="bento" data-feat>
+      <article class="panel tile tile--files">
+        <div class="tile__copy">
+          <h3>Files that come back</h3>
+          <p class="muted">Whatever is in <code>/kaggle/working</code> when a session ends returns at the next start, however it ended. Kaggle keeps the files; kdev puts back the symlinks, empty folders and exec bits it drops, so a virtualenv survives.</p>
+        </div>
+        <svg class="scene" viewBox="0 0 540 240" role="img" aria-label="Files leave the ending session, Kaggle keeps them as version 14, and the next box restores them with their links and permissions.">
+          <g class="box">
+            <rect x="20" y="40" width="140" height="150" rx="14" />
+            <text class="lbl" x="34" y="66">v14 · session</text>
+            <circle class="lamp lamp--old" cx="146" cy="62" r="4" />
+          </g>
+          {cells.map((p, i) => <rect class="f f--old" x={L.x + p.c * S} y={L.y + p.r * S} width="18" height="18" rx="4" style={`--i:${i}`} />)}
+
+          <g class="vault">
+            <rect class="v3" x="220" y="102" width="96" height="76" rx="12" />
+            <rect class="v2" x="214" y="110" width="108" height="76" rx="12" />
+            <rect class="v1" x="208" y="118" width="120" height="76" rx="12" />
+            <text class="vlbl" x="268" y="154" text-anchor="middle">v14</text>
+            <text class="vsub" x="268" y="174" text-anchor="middle">kept by Kaggle</text>
+          </g>
+
+          <g class="box box--new">
+            <rect x="380" y="40" width="140" height="150" rx="14" />
+            <text class="lbl" x="394" y="66">next kdev up</text>
+            <circle class="lamp lamp--on" cx="506" cy="62" r="4" />
+          </g>
+          {cells.map((p, i) => <rect class="f f--new" x={R.x + p.c * S} y={R.y + p.r * S} width="18" height="18" rx="4" style={`--i:${i}`} />)}
+
+          {cells.filter((_, i) => i % 2 === 0).map((p, i) => (
+            <rect class="pk pk--out" x={L.x + p.c * S + 4} y={L.y + p.r * S + 4} width="10" height="10" rx="2.5" style={`--i:${i};--dx:${V.x - (L.x + p.c * S + 9)}px;--dy:${V.y - (L.y + p.r * S + 9)}px`} />
+          ))}
+          {cells.filter((_, i) => i % 2 === 1).map((p, i) => (
+            <rect class="pk pk--in" x={R.x + p.c * S + 4} y={R.y + p.r * S + 4} width="10" height="10" rx="2.5" style={`--i:${i};--dx:${V.x - (R.x + p.c * S + 9)}px;--dy:${V.y - (R.y + p.r * S + 9)}px`} />
+          ))}
+
+          <g class="tag" style="--i:0"><rect x="380" y="204" width="46" height="24" rx="12" /><text x="403" y="220" text-anchor="middle">links</text></g>
+          <g class="tag" style="--i:1"><rect x="432" y="204" width="42" height="24" rx="12" /><text x="453" y="220" text-anchor="middle">dirs</text></g>
+          <g class="tag" style="--i:2"><rect x="480" y="204" width="40" height="24" rx="12" /><text x="500" y="220" text-anchor="middle">+x</text></g>
+          <text class="cap" x="20" y="220">ends any way</text>
+          <text class="cap" x="268" y="220" text-anchor="middle">regular files</text>
+        </svg>
+      </article>
+
+      <article class="panel tile tile--quota">
+        <div class="tile__copy">
+          <h3>One box, pooled quota</h3>
+          <p class="muted">Each account in your Kaggle group brings {quota.gpuHours} GPU-hours and {quota.tpuHours} TPU-hours a week to the same notebook. When one runs short, <code>kdev up</code> asks which takes over.</p>
+        </div>
+        <div class="quota" aria-hidden="true">
+          {[
+            { n: 'alice', h: 3.5, low: true },
+            { n: 'bob', h: 22, pick: true },
+            { n: 'carol', h: 30 },
+          ].map((a, i) => (
+            <div class:list={['q', { 'q--low': a.low, 'q--pick': a.pick }]} style={`--v:${a.h / 30};--i:${i}`}>
+              <span class="q__av">{a.n[0]}</span>
+              <span class="q__n">{a.n}</span>
+              <span class="q__bar"><i></i></span>
+              <span class="q__h">{a.h}h</span>
+            </div>
+          ))}
+          <div class="q__ask">
+            <span class="c">?</span> This box needs 9h; alice has 3.5h.
+            <span class="q__ans">› run it as <b>bob</b></span>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel tile tile--hw" data-hw>
+        <div class="hw__left">
+          <div class="tile__copy">
+            <h3>Kaggle's machine, your editor</h3>
+            <p class="muted">Pick the accelerator once and every <code>kdev up</code> uses it. The box runs Kaggle's own image with {machine.packages} packages already installed and the internet switched on, so <code>pip</code>, <code>apt</code> and <code>git</code> work as usual.</p>
+          </div>
+          <div class="acc" role="radiogroup" aria-label="Accelerator">
+            {accelerators.map((a, i) => (
+              <button type="button" role="radio" class="acc__b" data-acc={i} aria-checked={a.k === 't4' ? 'true' : 'false'} data-cmd={`kdev config set gpu ${a.k}`} data-meta={`${a.hours} · ${a.quota}`}>
+                {a.logo ? <img src={`/icons/${a.logo}.svg`} alt="" class:list={['acc__logo', { 'acc__logo--wide logo-ink': a.logo === 'nvidia' }]} width="40" height="16" loading="lazy" decoding="async" /> : <span class="acc__cpu" aria-hidden="true"></span>}
+                <span>{a.t}</span>
+              </button>
+            ))}
+          </div>
+          <div class="acc__out">
+            <code><span class="cmd__p">$</span> <span data-acc-cmd>kdev config set gpu t4</span></code>
+            <span class="muted" data-acc-meta>12h sessions · {quota.gpuHours} GPU-hours a week</span>
+          </div>
+        </div>
+
+        <div class="rig" aria-label={`Measured on a T4 box, ${measuredOn}`}>
+          <div class="rig__head"><span class="dot dot--live" aria-hidden="true"></span><span>measured on a live T4 box · {measuredOn}</span></div>
+          <div class="gpus">
+            {machine.gpus.map((g, gi) => (
+              <div class="gpu" style={`--g:${gi}`}>
+                <div class="gpu__top"><img src="/icons/nvidia.svg" alt="NVIDIA" class="logo-ink" width="56" height="11" loading="lazy" decoding="async" /><span>GPU {gi}</span></div>
+                <b>{g.name}</b>
+                <div class="vram" aria-label={`${g.vram} GB VRAM`}>
+                  {Array.from({ length: g.vram }, (_, k) => <i style={`--k:${k}`}></i>)}
+                </div>
+                <span class="gpu__m">{g.vram} GB VRAM</span>
+              </div>
+            ))}
+          </div>
+          <div class="meters">
+            <div class="meter">
+              <span class="meter__k">RAM</span>
+              <span class="meter__bar"><i style="--v:1"></i></span>
+              <b>{machine.ram} GB</b>
+            </div>
+            <div class="meter">
+              <span class="meter__k">CPU</span>
+              <span class="cores">{Array.from({ length: machine.cpu }, (_, k) => <i style={`--k:${k}`}></i>)}</span>
+              <b>{machine.cpu} vCPU</b>
+            </div>
+            <div class="meter meter--disk">
+              <span class="meter__k">Disk</span>
+              <span class="disk"><i class="disk__saved"></i><i class="disk__scratch"></i></span>
+              <b>{machine.saved} GB saved · ~{machine.scratch} GB scratch free</b>
+            </div>
+          </div>
+          <div class="stack">
+            <p class="stack__h">
+              <img src="/icons/ubuntu.svg" alt="" width="16" height="16" loading="lazy" decoding="async" />
+              {machine.os} · {machine.cuda} · {machine.packages} packages preinstalled
+            </p>
+            <ul class="stack__list" role="list">
+              {stack.map((x, k) => (
+                <li class="lib" style={`--k:${k}`}>
+                  <img src={`/icons/${x.icon}.svg`} alt="" width="20" height="20" loading="lazy" decoding="async" />
+                  <span>{x.t}</span>{x.v && <small>{x.v}</small>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <ul class="minis" role="list">
+      {small.map((s) => (
+        <li class="mini">
+          <span class="mini__ic" aria-hidden="true">
+            {s.icon ? <img src={s.icon} alt="" class:list={{ wide: s.wide }} width="22" height="22" loading="lazy" decoding="async" /> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" set:html={GLYPH[s.glyph!]} />}
+          </span>
+          <span class="mini__k">{s.k}{s.next && <span class="mini__next">next release</span>}</span>
+          <h3 class="mini__t">{s.t}</h3>
+          <p class="mini__d">{s.d}</p>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>
+
+<style>
+  .bento { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
+  .tile { display: flex; flex-direction: column; gap: 24px; padding: clamp(22px, 2.6vw, 30px); overflow: hidden; transition: border-color 0.3s; }
+  .tile:hover { border-color: var(--line-2); }
+  .tile__copy h3 { font-size: 1.4rem; margin-bottom: 10px; }
+  .tile__copy p { font-size: 15px; max-width: 60ch; }
+  .tile code { font-size: 0.86em; padding: 0.1em 0.35em; border-radius: 5px; background: var(--accent-soft); color: var(--ink); }
+  .tile--files { grid-column: span 7; }
+  .tile--quota { grid-column: span 5; }
+  .tile--hw { grid-column: span 12; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(24px, 4vw, 48px); align-items: stretch; }
+  .tile > svg, .quota { margin-top: auto; }
+
+  .scene { width: 100%; height: auto; overflow: visible; }
+  .box rect { fill: var(--panel-2); stroke: var(--line-2); }
+  .box--new rect { stroke: color-mix(in srgb, var(--accent) 45%, var(--line-2)); }
+  .lbl { font-family: var(--font-mono); font-size: 11px; fill: var(--ink-3); }
+  .lamp { fill: var(--ok); }
+  .lamp--on { fill: var(--accent); }
+  .f { fill: color-mix(in srgb, var(--ink) 16%, transparent); }
+  .f--new { fill: color-mix(in srgb, var(--accent) 55%, transparent); }
+  .vault rect { fill: var(--panel-2); stroke: var(--line-2); }
+  .vault .v1 { stroke: color-mix(in srgb, var(--accent) 35%, var(--line-2)); }
+  .vlbl { font-family: var(--font-pixel); font-size: 15px; fill: var(--ink); }
+  .vsub, .cap { font-family: var(--font-mono); font-size: 10.5px; fill: var(--ink-3); }
+  .pk { fill: var(--accent); opacity: 0; }
+  .tag rect { fill: var(--accent-soft); stroke: color-mix(in srgb, var(--accent) 55%, transparent); }
+  .tag text { font-family: var(--font-mono); font-size: 10.5px; fill: var(--accent-ink); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .f--old { animation: f-old 7s var(--ease-in-out) infinite; animation-delay: calc(var(--i) * 40ms); }
+    .lamp--old { animation: lamp 7s steps(1) infinite; }
+    .pk--out { animation: pk-out 7s var(--ease-in-out) infinite; animation-delay: calc(var(--i) * 90ms); }
+    .pk--in { animation: pk-in 7s var(--ease-in-out) infinite; animation-delay: calc(var(--i) * 90ms); }
+    .vault .v1 { animation: vault 7s var(--ease) infinite; }
+    .f--new { animation: f-new 7s var(--ease) infinite; animation-delay: calc(var(--i) * 40ms); }
+    .tag { animation: tag 7s var(--ease) infinite; animation-delay: calc(var(--i) * 120ms); }
+    .q__bar i { animation: fill 1.4s var(--ease) both; animation-delay: calc(var(--i) * 120ms); }
+    .q--pick { animation: pick 6s var(--ease) infinite; }
+    .q__ans { animation: ans 6s var(--ease) infinite; }
+    .bento:not([data-run]) :is(.f, .lamp, .pk, .v1, .tag, .q__bar i, .q, .q__ans) { animation-play-state: paused; }
+  }
+  @media (prefers-reduced-motion: reduce) { .f--new, .tag { opacity: 1; } }
+  @keyframes f-old { 0%, 14% { opacity: 1; } 34%, 86% { opacity: 0.18; } 100% { opacity: 1; } }
+  @keyframes lamp { 0%, 14% { fill: var(--ok); } 15%, 94% { fill: var(--ink-3); } }
+  @keyframes pk-out { 0%, 16% { opacity: 0; transform: none; } 19% { opacity: 1; transform: none; } 38% { opacity: 1; transform: translate(var(--dx), var(--dy)); } 42%, 100% { opacity: 0; transform: translate(var(--dx), var(--dy)); } }
+  @keyframes vault { 0%, 36% { stroke: var(--line-2); } 42%, 56% { stroke: var(--accent); } 70%, 100% { stroke: color-mix(in srgb, var(--accent) 35%, var(--line-2)); } }
+  @keyframes pk-in { 0%, 48% { opacity: 0; transform: translate(var(--dx), var(--dy)); } 51% { opacity: 1; transform: translate(var(--dx), var(--dy)); } 68% { opacity: 1; transform: none; } 72%, 100% { opacity: 0; transform: none; } }
+  @keyframes f-new { 0%, 56% { opacity: 0.1; } 70%, 94% { opacity: 1; } 100% { opacity: 0.1; } }
+  @keyframes tag { 0%, 72% { opacity: 0; transform: translateY(4px); } 78%, 94% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+
+  .quota { display: grid; gap: 10px; }
+  .q { display: grid; grid-template-columns: 26px 46px 1fr 40px; gap: 10px; align-items: center; font-family: var(--font-mono); font-size: 13px; padding: 6px 8px; border-radius: 10px; border: 1px solid transparent; }
+  .q__av { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: color-mix(in srgb, var(--ink) 8%, transparent); font-family: var(--font-pixel); font-size: 11px; text-transform: uppercase; color: var(--ink-2); }
+  .q__n { color: var(--ink-2); }
+  .q__h { text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .q__bar { height: 8px; border-radius: 99px; background: color-mix(in srgb, var(--ink) 8%, transparent); overflow: hidden; }
+  .q__bar i { display: block; height: 100%; width: calc(var(--v) * 100%); border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--sky)); transform-origin: left; }
+  .q--low .q__bar i { background: var(--amber); }
+  .q--low .q__h { color: var(--amber); }
+  .q__ask { margin-top: 4px; padding: 10px 12px; border-radius: 10px; border: 1px dashed var(--line-2); font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); line-height: 1.6; }
+  .q__ask b { color: var(--ink); }
+  .q__ans { display: block; color: var(--accent-ink); }
+  .c { color: var(--accent-ink); font-weight: 600; }
+  @keyframes fill { from { transform: scaleX(0); } }
+  @keyframes pick { 0%, 40% { border-color: transparent; background: transparent; } 50%, 90% { border-color: var(--accent); background: var(--accent-soft); } 100% { border-color: transparent; } }
+  @keyframes ans { 0%, 40% { opacity: 0; } 50%, 90% { opacity: 1; } 100% { opacity: 0; } }
+
+  /* machine */
+  .hw__left { display: flex; flex-direction: column; gap: 22px; }
+  .acc { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .acc__b { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--panel-2); font-family: var(--font-mono); font-size: 14px; color: var(--ink-2); transition: border-color 0.25s, background 0.25s, color 0.25s, transform 0.25s var(--ease); }
+  .acc__b:hover { border-color: var(--accent); color: var(--ink); transform: translateY(-1px); }
+  .acc__b[aria-checked='true'] { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .acc__logo { width: 22px; height: 22px; object-fit: contain; }
+  .acc__logo--wide { width: 56px; height: 12px; }
+  .acc__cpu { width: 22px; height: 22px; border-radius: 5px; border: 1.6px solid currentColor; position: relative; }
+  .acc__cpu::after { content: ''; position: absolute; inset: 5px; border-radius: 2px; background: currentColor; opacity: 0.5; }
+  .acc__out { display: grid; gap: 6px; margin-top: auto; padding: 14px 16px; border-radius: 12px; background: var(--term-bg); }
+  .acc__out code { color: #fff; font-size: 14px; }
+  .acc__out .cmd__p { color: #00b8d4; }
+  .acc__out .muted { font-size: 13px; color: var(--term-dim); }
+
+  .rig { display: grid; gap: 14px; padding: 18px; border-radius: 16px; border: 1px solid var(--line); background: var(--bg-2); }
+  .rig__head { display: flex; align-items: center; gap: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); }
+  .gpus { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .gpu { position: relative; display: grid; gap: 6px; padding: 14px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line-2); overflow: hidden; }
+  .gpu::before { content: ''; position: absolute; inset: auto 0 0; height: 3px; background: linear-gradient(90deg, #76b900, #b6e35a); opacity: 0.8; }
+  .gpu__top { display: flex; justify-content: space-between; align-items: center; font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+  .gpu__top img { height: 11px; width: auto; opacity: 0.9; }
+  .gpu b { font-size: 17px; letter-spacing: -0.01em; color: var(--ink); }
+  .vram { display: grid; grid-template-columns: repeat(15, 1fr); gap: 3px; }
+  .vram i { height: 14px; border-radius: 2px; background: color-mix(in srgb, #76b900 70%, transparent); }
+  .gpu__m { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); }
+  .meters { display: grid; gap: 8px; }
+  .meter { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 12px; align-items: center; font-size: 13px; }
+  .meter__k { font-family: var(--font-pixel); font-size: 10px; letter-spacing: 0.08em; color: var(--ink-3); text-transform: uppercase; }
+  .meter b { font-family: var(--font-mono); font-weight: 500; font-size: 12.5px; color: var(--ink); white-space: nowrap; }
+  .meter__bar { height: 10px; border-radius: 99px; background: color-mix(in srgb, var(--ink) 8%, transparent); overflow: hidden; }
+  .meter__bar i { display: block; height: 100%; width: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--sky)); transform-origin: left; }
+  .cores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .cores i { height: 10px; border-radius: 3px; background: var(--accent); opacity: 0.85; }
+  .disk { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: color-mix(in srgb, var(--ink) 8%, transparent); }
+  .disk__saved { width: 22%; background: var(--ok); }
+  .disk__scratch { flex: 1; background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--ink) 22%, transparent) 0 6px, transparent 6px 9px); }
+  .stack { display: grid; gap: 10px; padding-top: 12px; border-top: 1px dashed var(--line-2); }
+  .stack__h { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+  .stack__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+  .lib { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 10px 0 8px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel); font-size: 13px; color: var(--ink); transition: border-color 0.2s, transform 0.25s var(--ease); }
+  .lib:hover { border-color: var(--line-2); transform: translateY(-2px); }
+  .lib img { width: 18px; height: 18px; object-fit: contain; }
+  .lib small { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+  @media (prefers-reduced-motion: no-preference) {
+    .bento[data-run] .vram i { animation: px-on 0.3s var(--ease) both; animation-delay: calc(var(--g) * 300ms + var(--k) * 40ms); }
+    .bento[data-run] .meter__bar i { animation: fill 1.2s var(--ease) 0.5s both; }
+    .bento[data-run] .cores i { animation: core 1.6s ease-in-out infinite; animation-delay: calc(var(--k) * 0.2s); }
+    .bento[data-run] .disk__saved { animation: fill 1s var(--ease) 0.8s both; transform-origin: left; }
+    .bento[data-run] .lib { animation: spec 0.5s var(--ease) both; animation-delay: calc(0.6s + var(--k) * 50ms); }
+    .bento:not([data-run]) :is(.vram i, .meter__bar i, .cores i, .disk__saved, .lib) { animation-play-state: paused; }
+  }
+  @keyframes spec { from { opacity: 0; transform: translateY(6px); } }
+  @keyframes px-on { from { opacity: 0.1; transform: scaleY(0.4); } }
+  @keyframes core { 50% { opacity: 0.35; } }
+
+  .minis { list-style: none; margin: 16px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .mini { background: var(--bg); padding: 26px 24px 28px; transition: background 0.3s; }
+  .mini:hover { background: var(--panel); }
+  .mini__ic { display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--accent-ink); }
+  .mini__ic img { width: 22px; height: 22px; object-fit: contain; }
+  .mini__ic img.wide { width: 30px; }
+  .mini__ic svg { width: 20px; height: 20px; }
+  .mini__k { font-family: var(--font-pixel); font-size: 10.5px; color: var(--accent-ink); text-transform: uppercase; letter-spacing: 0.08em; }
+  .mini__next { margin-left: 10px; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line-2); color: var(--ink-3); }
+  .mini__t { font-size: 1.05rem; margin: 10px 0 6px; letter-spacing: -0.015em; }
+  .mini__d { font-size: 14.5px; color: var(--ink-2); line-height: 1.55; }
+
+  @media (max-width: 1000px) {
+    .tile--files, .tile--quota, .tile--hw { grid-column: span 12; }
+    .tile--hw { grid-template-columns: minmax(0, 1fr); }
+    .minis { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 640px) {
+    .minis { grid-template-columns: 1fr; }
+    .gpu { padding: 12px; }
+    .gpu b { font-size: 15px; }
+    .vram { gap: 2px; }
+    .vram i { height: 10px; }
+    .meter { grid-template-columns: 44px minmax(0, 1fr); }
+    .meter b { grid-column: 2; }
+  }
+</style>
+
+<script>
+  function setup() {
+    const root = document.querySelector<HTMLElement>('[data-feat]');
+    if (!root || root.dataset.ready) return;
+    root.dataset.ready = '1';
+    const accs = [...root.querySelectorAll<HTMLButtonElement>('[data-acc]')];
+    const cmd = root.querySelector<HTMLElement>('[data-acc-cmd]')!;
+    const meta = root.querySelector<HTMLElement>('[data-acc-meta]')!;
+    accs.forEach((b) => b.addEventListener('click', () => {
+      accs.forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+      cmd.textContent = b.dataset.cmd!;
+      meta.textContent = b.dataset.meta!;
+    }));
+    const io = new IntersectionObserver(([e]) => root.toggleAttribute('data-run', e.isIntersecting), { threshold: 0.1 });
+    io.observe(root);
+    document.addEventListener('astro:before-swap', () => io.disconnect(), { once: true });
+  }
+  document.addEventListener('astro:page-load', setup);
+</script>

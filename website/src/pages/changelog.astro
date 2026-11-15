@@ -1,0 +1,36 @@
+---
+import { getEntry, render } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import { links } from '../data/site';
+
+const entry = await getEntry('changelog', 'changelog');
+if (!entry) throw new Error('CHANGELOG.md not found at the repository root');
+const { Content } = await render(entry);
+---
+
+<Base title="Changelog" description="Every user-visible change to kdev, newest first. Rendered from the repository's CHANGELOG.md.">
+  <div class="cl wrap">
+    <header class="cl__head" data-enter>
+      <p class="eyebrow">Changelog</p>
+      <h1 class="cl__h">What changed, <span class="grad">and why you'd notice.</span></h1>
+      <p class="cl__lede muted">Rendered straight from <a class="link" href={`${links.releases.replace('/releases', '')}/blob/main/CHANGELOG.md`} rel="noopener">CHANGELOG.md</a>. Releases are on <a class="link" href={links.releases} rel="noopener">GitHub</a>, each with signed build provenance.</p>
+    </header>
+    <div class="prose cl__body" data-pagefind-body>
+      <Content />
+    </div>
+  </div>
+</Base>
+
+<style>
+  .cl { padding-block: clamp(48px, 8vw, 96px) clamp(80px, 10vw, 140px); }
+  .cl__head { display: grid; gap: 16px; max-width: 760px; margin-bottom: 40px; }
+  .cl__h { font-size: clamp(2.4rem, 5.6vw, 4rem); letter-spacing: -0.045em; }
+  .cl__body :global(h1) { display: none; }
+  .cl__body :global(h1 + p) { display: none; }
+  .cl__body :global(h2) {
+    display: flex; align-items: baseline; gap: 12px; padding-top: 32px; border-top: 1px solid var(--line);
+    font-family: var(--font-mono); font-size: 1.3rem; letter-spacing: -0.01em;
+  }
+  .cl__body :global(h2:first-of-type) { border-top: 0; padding-top: 0; margin-top: 0.5em; }
+  .cl__body :global(h3) { font-family: var(--font-pixel); font-size: 11.5px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent-ink); }
+</style>

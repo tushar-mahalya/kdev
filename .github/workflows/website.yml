@@ -1,0 +1,144 @@
+name: website
+
+# The site in website/ is a static Astro build on Cloudflare Pages
+# (project kdev-cli, https://kdev-cli.pages.dev).
+#
+#   pull request  -> type-check, build, link check; same-repo PRs also get a
+#                    preview at https://pr-<n>.kdev-cli.pages.dev
+#   push to main  -> the same checks, then a production deploy
+#
+# Needs two repository secrets, used only by the preview and deploy jobs:
+#   CLOUDFLARE_API_TOKEN   a token with "Cloudflare Pages: Edit" on the account
+#   CLOUDFLARE_ACCOUNT_ID  the account that owns the project
+# and a repository variable SITE_URL (the canonical origin,
+# https://kdev-cli.pages.dev); production deploys fail without it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - website/**
+      - CHANGELOG.md
+      - .github/workflows/website.yml
+  pull_request:
+    paths:
+      - website/**
+      - CHANGELOG.md
+      - .github/workflows/website.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    working-directory: website
+
+env:
+  SITE_URL: ${{ vars.SITE_URL }}
+
+jobs:
+  build:
+    name: build and check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - run: npm ci
+      - name: Type-check
+        run: npm run check
+      - name: Build (Astro, Pagefind index, CSP headers)
+        run: npm run build
+      - name: Internal links resolve
+        run: npm run check:links
+      - name: Headers and 404 page are in the build
+        run: |
+          test -f dist/_headers
+          test -f dist/404.html
+          grep -q "Content-Security-Policy" dist/_headers
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: website-dist
+          path: website/dist/
+          include-hidden-files: true
+          retention-days: 7
+
+  preview:
+    name: preview URL
+    needs: build
+    # Secrets are not available to pull requests from forks.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment:
+      name: preview
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - run: npm ci
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: website-dist
+          path: website/dist
+      - name: Deploy a preview
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          npx wrangler pages deploy dist --project-name kdev-cli --branch "pr-${PR}" --commit-hash "$SHA" | tee upload.log
+          url=$(grep -Eo 'https://[^ ]+\.pages\.dev' upload.log | tail -1 || true)
+          {
+            echo "## Website preview"
+            echo
+            echo "${url:-See the job log for the preview URL.}"
+            echo
+            echo "Branch alias: https://pr-${PR}.kdev-cli.pages.dev"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: deploy to production
+    needs: build
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.SITE_URL }}
+    concurrency:
+      group: website-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: SITE_URL is set
+        run: |
+          if [ -z "$SITE_URL" ]; then
+            echo "::error::Set the repository variable SITE_URL (the site's canonical origin) before deploying."
+            exit 1
+          fi
+      - run: npm ci
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: website-dist
+          path: website/dist
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler pages deploy dist --project-name kdev-cli --branch main --commit-hash "$GITHUB_SHA" --commit-message "$(git log -1 --format=%s | cut -c1-100)"

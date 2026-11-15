@@ -1,0 +1,139 @@
+---
+import Logo from './Logo.astro';
+import { site } from '../data/site';
+
+const path = Astro.url.pathname;
+const items = [
+  { href: '/#features', label: 'Features' },
+  { href: '/#how', label: 'How it works' },
+  { href: '/docs/', label: 'Docs' },
+  { href: '/changelog/', label: 'Changelog' },
+];
+const isActive = (href: string) => !href.includes('#') && path.startsWith(href);
+---
+
+<header class="nav" data-nav>
+  <div class="nav__inner wrap">
+    <a href="/" class="nav__brand" aria-label="kdev home">
+      <Logo variant="badge" class="nav__badge" label="" />
+      <span class="nav__word">kdev</span>
+    </a>
+
+    <nav class="nav__links" aria-label="Main">
+      {items.map((i) => (
+        <a href={i.href} class:list={['nav__link', { 'is-active': isActive(i.href) }]} data-nav-link={i.href}>{i.label}</a>
+      ))}
+    </nav>
+
+    <div class="nav__tools">
+      <button class="nav__search" type="button" data-search-open aria-label="Search the docs">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="9" cy="9" r="5.5"></circle><path d="m13.2 13.2 3.3 3.3" stroke-linecap="round"></path></svg>
+        <span class="nav__search-label">Search</span>
+        <kbd class="nav__kbd">⌘K</kbd>
+      </button>
+      <button class="nav__icon" type="button" data-theme-toggle aria-label="Switch colour theme">
+        <svg class="i-sun" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="3.4"></circle><path d="M10 2.5v1.8M10 15.7v1.8M2.5 10h1.8M15.7 10h1.8M4.7 4.7l1.3 1.3M14 14l1.3 1.3M4.7 15.3 6 14M14 6l1.3-1.3" stroke-linecap="round"></path></svg>
+        <svg class="i-moon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M16 12.2A6.5 6.5 0 0 1 7.8 4a6.5 6.5 0 1 0 8.2 8.2Z" stroke-linejoin="round"></path></svg>
+      </button>
+      <a class="nav__gh btn btn--ghost" href={site.repo} rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.87.87 2.33.67.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"></path></svg>
+        <span>GitHub</span>
+      </a>
+      <button class="nav__menu" type="button" data-menu-toggle aria-expanded="false" aria-controls="mobile-menu" aria-label="Open menu">
+        <span></span><span></span>
+      </button>
+    </div>
+  </div>
+
+  <div class="mnav" id="mobile-menu" data-menu hidden>
+    <nav class="wrap mnav__inner" aria-label="Mobile">
+      {items.map((i, n) => (
+        <a href={i.href} class="mnav__link" style={`--i:${n}`}>{i.label}</a>
+      ))}
+      <a href={site.repo} class="mnav__link" style={`--i:${items.length}`} rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .nav {
+    position: sticky; top: 0; z-index: 50; height: var(--nav-h);
+    transition: background 0.3s, border-color 0.3s, backdrop-filter 0.3s;
+    border-bottom: 1px solid transparent;
+  }
+  :global(html[data-scrolled]) .nav, :global(html[data-menu-open]) .nav {
+    background: color-mix(in srgb, var(--bg) 96%, transparent);
+    backdrop-filter: saturate(1.4) blur(16px);
+    -webkit-backdrop-filter: saturate(1.4) blur(16px);
+    border-bottom-color: var(--line);
+  }
+  .nav__inner { height: 100%; display: flex; align-items: center; gap: 24px; }
+  .nav__brand { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; }
+  .nav__brand :global(.logo) { width: 30px; flex: none; }
+  .nav__word { font-family: var(--font-pixel); font-size: 17px; letter-spacing: 0.02em; }
+  .nav__brand:hover :global(.logo) { animation: blink 0.6s steps(2) 2; }
+  @keyframes blink { 50% { opacity: 0.4; } }
+
+  .nav__links { display: flex; gap: 4px; margin-left: 12px; }
+  .nav__link {
+    position: relative; padding: 8px 12px; border-radius: 8px; font-size: 14.5px; color: var(--ink-2);
+    transition: color 0.2s, background 0.2s;
+  }
+  .nav__link:hover { color: var(--ink); background: var(--accent-soft); }
+  .nav__link.is-active { color: var(--ink); }
+  .nav__link.is-active::after {
+    content: ''; position: absolute; left: 12px; right: 12px; bottom: 2px; height: 2px;
+    background: var(--accent); view-transition-name: nav-underline;
+  }
+
+  .nav__tools { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .nav__search {
+    display: inline-flex; align-items: center; gap: 10px; height: 38px; padding: 0 8px 0 12px;
+    border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink-3);
+    font-size: 14px; transition: border-color 0.2s, color 0.2s;
+  }
+  .nav__search:hover { border-color: var(--line-2); color: var(--ink); }
+  .nav__search svg { width: 16px; height: 16px; }
+  .nav__search-label { min-width: 70px; text-align: left; }
+  .nav__kbd { font-family: var(--font-mono); font-size: 11px; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line); }
+  .nav__icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; color: var(--ink-2); transition: background 0.2s, color 0.2s; }
+  .nav__icon:hover { background: var(--accent-soft); color: var(--ink); }
+  .nav__icon svg { width: 18px; height: 18px; }
+  .i-moon { display: none; }
+  :global(html[data-theme='light']) .i-sun { display: none; }
+  :global(html[data-theme='light']) .i-moon { display: block; }
+  @media (prefers-color-scheme: light) {
+    :global(html:not([data-theme='dark'])) .i-sun { display: none; }
+    :global(html:not([data-theme='dark'])) .i-moon { display: block; }
+  }
+  .nav__gh { min-height: 38px; padding: 0 14px; font-size: 14px; gap: 8px; }
+
+  .nav__menu { display: none; width: 44px; height: 44px; position: relative; }
+  .nav__menu span {
+    position: absolute; left: 12px; right: 12px; height: 1.6px; background: var(--ink); border-radius: 2px;
+    transition: transform 0.35s var(--ease);
+  }
+  .nav__menu span:first-child { top: 18px; }
+  .nav__menu span:last-child { top: 25px; }
+  .nav__menu[aria-expanded='true'] span:first-child { transform: translateY(3.5px) rotate(45deg); }
+  .nav__menu[aria-expanded='true'] span:last-child { transform: translateY(-3.5px) rotate(-45deg); }
+
+  .mnav {
+    position: fixed; inset: var(--nav-h) 0 0; background: var(--bg); z-index: 49;
+    border-top: 1px solid var(--line);
+  }
+  .mnav__inner { display: grid; padding-top: 24px; }
+  .mnav__link {
+    font-size: 30px; font-weight: 600; letter-spacing: -0.03em; padding: 12px 0; border-bottom: 1px solid var(--line);
+    animation: menu-in 0.5s var(--ease) both; animation-delay: calc(var(--i) * 45ms);
+  }
+  @keyframes menu-in { from { opacity: 0; transform: translateY(12px); } }
+
+  @media (max-width: 920px) {
+    .nav__links, .nav__gh { display: none; }
+    .nav__menu { display: block; }
+    .nav__search-label, .nav__kbd { display: none; }
+    .nav__search { width: 44px; height: 44px; padding: 0; justify-content: center; border: 0; background: none; }
+    .nav__icon { width: 44px; height: 44px; }
+  }
+</style>

@@ -1,0 +1,97 @@
+---
+import { site, links } from '../data/site';
+const ways = [
+  { t: 'Ask in Discussions', d: 'How to do something, or whether what you see is expected.', href: links.discussions },
+  { t: 'Report a bug', d: 'What you ran, what you expected, what happened. The -v output helps most.', href: links.issues },
+  { t: 'Pick a good first issue', d: 'Small and well described. Say you are on it so two people don\'t fix the same thing.', href: links.goodFirst },
+  { t: 'Improve the docs', d: 'If something was unclear when you set up, it will be unclear to the next person too.', href: '/docs/contributing/' },
+];
+const layers = [
+  { n: 'cli.py', r: 'entry point, one error boundary' },
+  { n: 'commands/', r: 'parse, call logic, render with ui' },
+  { n: 'session · persistence · quota', r: 'the behaviour, testable without a terminal' },
+  { n: 'api · auth · tunnel · sshcfg', r: 'the edges' },
+  { n: 'kdev_box.py', r: 'standard library only; runs on the box' },
+];
+---
+
+<section class="section contrib" id="contribute" aria-labelledby="contrib-h">
+  <div class="wrap contrib__grid">
+    <div>
+      <header class="section__head">
+        <span class="eyebrow">Open source · MIT</span>
+        <h2 id="contrib-h" class="h-section">Small, opinionated,<br /><span class="grad">and open to you.</span></h2>
+        <p class="lede">About seven thousand lines of Python with an offline test suite against a fake Kaggle. You can read the whole thing in an afternoon. For anything bigger than a fix, open an issue first and say what you want to change and why.</p>
+      </header>
+      <ul class="ways" role="list">
+        {ways.map((w) => (
+          <li>
+            <a class="way" href={w.href} rel={w.href.startsWith('http') ? 'noopener' : undefined}>
+              <span class="way__t">{w.t}<span class="arrow" aria-hidden="true">→</span></span>
+              <span class="way__d">{w.d}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+      <div class="contrib__cta">
+        <a class="btn btn--accent" href={site.repo} rel="noopener">Read the source<span class="arrow" aria-hidden="true">→</span></a>
+        <a class="btn btn--ghost" href="/docs/contributing/">Contributor guide</a>
+      </div>
+    </div>
+
+    <div class="panel stack" aria-label="How the code is laid out">
+      <p class="stack__h"><span class="dot dot--live"></span>src/kdev</p>
+      <ol class="stack__list" role="list">
+        {layers.map((l, i) => (
+          <li class="stack__l" style={`--i:${i}`}>
+            <code>{l.n}</code>
+            <span>{l.r}</span>
+          </li>
+        ))}
+      </ol>
+      <div class="stack__rules">
+        <p><span class="ok">✓</span> A bug fix comes with a test that fails without it</p>
+        <p><span class="ok">✓</span> Tests stay offline: the fake Kaggle in test_cli.py</p>
+        <p><span class="ok">✓</span> Conventional Commits, the why in the body</p>
+        <p><span class="ok">✓</span> Everything the user sees goes through ui.py</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .contrib { border-top: 1px solid var(--line); }
+  .contrib__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(32px, 5vw, 72px); align-items: center; }
+  .contrib .section__head { margin-bottom: 32px; }
+  .ways { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .way { display: grid; gap: 4px; height: 100%; padding: 16px 18px; border-radius: 12px; border: 1px solid var(--line); transition: border-color 0.25s, transform 0.3s var(--ease), background 0.25s; }
+  .way:hover { border-color: var(--accent); transform: translateY(-2px); background: var(--accent-soft); }
+  .way__t { display: flex; justify-content: space-between; font-weight: 600; font-size: 15.5px; }
+  .way__t .arrow { color: var(--accent-ink); transition: transform 0.3s var(--ease); }
+  .way:hover .arrow { transform: translateX(3px); }
+  .way__d { font-size: 14px; color: var(--ink-2); line-height: 1.5; }
+  .contrib__cta { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+
+  .stack { padding: 24px; font-size: 14px; }
+  .stack__h { display: flex; align-items: center; gap: 10px; font-family: var(--font-mono); color: var(--ink-2); margin-bottom: 16px; }
+  .stack__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .stack__l {
+    display: grid; grid-template-columns: minmax(0, auto) 1fr; gap: 16px; align-items: baseline;
+    padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2);
+    margin-left: calc(var(--i) * 14px);
+    transition: border-color 0.25s, transform 0.3s var(--ease);
+  }
+  .stack__l:hover { border-color: var(--accent); transform: translateX(4px); }
+  .stack__l code { color: var(--accent-ink); font-size: 13px; white-space: nowrap; }
+  .stack__l span { color: var(--ink-2); font-size: 13.5px; }
+  .stack__rules { margin-top: 20px; padding-top: 18px; border-top: 1px dashed var(--line-2); display: grid; gap: 8px; color: var(--ink-2); font-size: 14px; }
+  .ok { color: var(--ok); margin-right: 8px; }
+
+  @media (max-width: 960px) {
+    .contrib__grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .ways { grid-template-columns: 1fr; }
+    .stack__l { grid-template-columns: 1fr; gap: 4px; margin-left: calc(var(--i) * 6px); }
+  }
+</style>

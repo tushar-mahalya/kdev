@@ -32,7 +32,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/tushar-mahalya/kdev"
+Homepage = "https://kdev-cli.pages.dev"
+Documentation = "https://kdev-cli.pages.dev/docs/"
 Repository = "https://github.com/tushar-mahalya/kdev"
 Issues = "https://github.com/tushar-mahalya/kdev/issues"
 Changelog = "https://github.com/tushar-mahalya/kdev/blob/main/CHANGELOG.md"

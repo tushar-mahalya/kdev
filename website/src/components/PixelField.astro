@@ -1,0 +1,147 @@
+---
+// The hero's ground: a field of pixels in the CLI's palette. Packets run along
+// the rows (traffic through the tunnel) and the pointer lights the cells it
+// passes. Canvas 2D, capped at 2x DPR, paused when off screen or hidden, and a
+// still frame under reduced motion.
+---
+
+<div class="pf" aria-hidden="true">
+  <canvas data-pixel-field></canvas>
+</div>
+
+<style>
+  .pf { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .pf canvas { width: 100%; height: 100%; }
+  .pf::after {
+    content: ''; position: absolute; inset: 0;
+    background:
+      radial-gradient(60% 50% at 70% 35%, transparent 0%, var(--bg) 92%),
+      linear-gradient(to bottom, transparent 60%, var(--bg));
+  }
+</style>
+
+<script>
+  function setup() {
+    const canvas = document.querySelector<HTMLCanvasElement>('[data-pixel-field]');
+    if (!canvas || canvas.dataset.ready) return;
+    canvas.dataset.ready = '1';
+    const ctx = canvas.getContext('2d', { alpha: true });
+    if (!ctx) return;
+
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const CELL = 22;
+    const SIZE = 3;
+    let w = 0, h = 0, cols = 0, rows = 0, dpr = 1;
+    let heat = new Float32Array(0);
+    let base = new Float32Array(0);
+    let dark = true;
+    let colour = { dim: '', hot: [0, 184, 212] as number[] };
+    const pointer = { x: -9999, y: -9999, active: false };
+    type Packet = { r: number; x: number; v: number; len: number; hue: number };
+    let packets: Packet[] = [];
+
+    const readTheme = () => {
+      const t = document.documentElement.dataset.theme;
+      dark = t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      colour.dim = dark ? 'rgba(200,225,240,' : 'rgba(10,40,60,';
+    };
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      w = rect.width; h = rect.height;
+      canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cols = Math.ceil(w / CELL) + 1; rows = Math.ceil(h / CELL) + 1;
+      heat = new Float32Array(cols * rows);
+      base = new Float32Array(cols * rows);
+      for (let i = 0; i < base.length; i++) {
+        const s = Math.sin(i * 12.9898) * 43758.5453;
+        base[i] = (s - Math.floor(s)) < 0.12 ? 0.35 : 0;
+      }
+      packets = [];
+    };
+
+    const spawn = () => {
+      const palette = [0, 0, 0, 1, 2];
+      packets.push({ r: Math.floor(Math.random() * rows), x: -4, v: 0.12 + Math.random() * 0.22, len: 3 + Math.floor(Math.random() * 6), hue: palette[Math.floor(Math.random() * palette.length)] });
+    };
+    const HUES = [[0, 184, 212], [67, 213, 237], [255, 176, 46]];
+
+    const draw = () => {
+      ctx.clearRect(0, 0, w, h);
+      const off = (CELL - SIZE) / 2;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const i = r * cols + c;
+          const x = c * CELL + off, y = r * CELL + off;
+          let a = 0.07 + base[i] * 0.12;
+          if (pointer.active) {
+            const dx = x - pointer.x, dy = y - pointer.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 < 140 * 140) heat[i] = Math.max(heat[i], 1 - Math.sqrt(d2) / 140);
+          }
+          const hv = heat[i];
+          if (hv > 0.01) {
+            const [R, G, B] = colour.hot;
+            ctx.fillStyle = `rgba(${R},${G},${B},${(0.15 + hv * 0.75).toFixed(3)})`;
+            const s = SIZE + hv * 3;
+            ctx.fillRect(x - (s - SIZE) / 2, y - (s - SIZE) / 2, s, s);
+            heat[i] = hv * 0.93;
+          } else {
+            ctx.fillStyle = colour.dim + a.toFixed(3) + ')';
+            ctx.fillRect(x, y, SIZE, SIZE);
+          }
+        }
+      }
+      for (const p of packets) {
+        const [R, G, B] = HUES[p.hue];
+        for (let k = 0; k < p.len; k++) {
+          const c = Math.floor(p.x) - k;
+          if (c < 0 || c >= cols) continue;
+          const a = (1 - k / p.len) * 0.9;
+          ctx.fillStyle = `rgba(${R},${G},${B},${a.toFixed(3)})`;
+          const s = k === 0 ? SIZE + 2 : SIZE;
+          ctx.fillRect(c * CELL + off - (s - SIZE) / 2, p.r * CELL + off - (s - SIZE) / 2, s, s);
+        }
+      }
+    };
+
+    let raf = 0, visible = true, last = 0, acc = 0;
+    const tick = (t: number) => {
+      raf = 0;
+      const dt = Math.min(64, t - (last || t));
+      last = t;
+      acc += dt;
+      if (acc > 420) { acc = 0; if (packets.length < 7) spawn(); }
+      for (const p of packets) p.x += p.v * (dt / 16);
+      packets = packets.filter((p) => p.x - p.len < cols);
+      draw();
+      if (visible && !document.hidden) raf = requestAnimationFrame(tick);
+    };
+    const start = () => { if (!raf && !reduce) { last = 0; raf = requestAnimationFrame(tick); } };
+    const stop = () => { if (raf) cancelAnimationFrame(raf); raf = 0; };
+
+    readTheme(); resize(); draw();
+    if (reduce) return;
+
+    const host = canvas.closest('section') ?? canvas.parentElement!;
+    const ctl = new AbortController();
+    const o = { signal: ctl.signal };
+    host.addEventListener('pointermove', (e) => {
+      const r = canvas.getBoundingClientRect();
+      pointer.x = (e as PointerEvent).clientX - r.left; pointer.y = (e as PointerEvent).clientY - r.top; pointer.active = true;
+    }, o);
+    host.addEventListener('pointerleave', () => { pointer.active = false; }, o);
+    const ro = new ResizeObserver(() => { resize(); draw(); });
+    ro.observe(canvas);
+    const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; visible ? start() : stop(); });
+    io.observe(canvas);
+    document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()), o);
+    window.addEventListener('kdev:theme', () => { readTheme(); draw(); }, o);
+    document.addEventListener('astro:before-swap', () => { stop(); ctl.abort(); ro.disconnect(); io.disconnect(); }, { once: true });
+    for (let i = 0; i < 4; i++) { spawn(); packets[i].x = Math.random() * cols; }
+    start();
+  }
+  document.addEventListener('astro:page-load', setup);
+</script>

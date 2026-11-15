@@ -1,0 +1,254 @@
+---
+// A replay of `kdev up`: the steps, glyphs and per-step clocks the CLI's
+// status board draws (ui.py: Stages), its ready card (ui.ready_card), then ssh.
+// Server-rendered in its final state so it reads correctly without JS; the
+// script rewinds it and plays it.
+const steps = [
+  { t: 'Submitting', d: '1s' },
+  { t: 'Waiting for a machine', d: '1m21s' },
+  { t: 'Installing SSH server', d: '14s' },
+  { t: 'Exporting notebook environment', d: '0s' },
+  { t: 'Syncing workspace', d: '0s' },
+  { t: 'Starting Cloudflare tunnel', d: '4s' },
+  { t: 'Restoring your files', d: '23s' },
+];
+---
+
+<figure class="term" data-term aria-label="A replay of kdev up starting a box and handing over a shell">
+  <div class="term__bar">
+    <span class="term__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="term__title">~/project — zsh</span>
+    <button class="term__ctl" type="button" data-term-toggle aria-label="Pause the replay">
+      <svg class="i-pause" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="4" y="3" width="3" height="10" rx="1"></rect><rect x="9" y="3" width="3" height="10" rx="1"></rect></svg>
+      <svg class="i-play" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 3.2v9.6a.6.6 0 0 0 .9.5l7.6-4.8a.6.6 0 0 0 0-1L5.9 2.7a.6.6 0 0 0-.9.5Z"></path></svg>
+    </button>
+  </div>
+  <div class="term__body" data-term-body aria-hidden="true">
+    <p class="ln"><span class="p">$</span> <span data-type="kdev up">kdev up</span></p>
+    <div class="board" data-board>
+      <p class="ln head"><span><b>alice</b> <span class="mu">· T4 ×2 · 9h</span></span><span class="mu" data-total>2m03s</span></p>
+      {steps.map((s, i) => (
+        <p class="ln step is-done" data-step={i}>
+          <span class="g" data-g>✓</span>
+          <span class="st">{s.t}</span>
+          <span class="clk" data-clk={s.d}>{s.d}</span>
+        </p>
+      ))}
+      <p class="ln sub" data-files><span class="bar"><i data-bar style="--p:1"></i></span><span class="mu"><span data-count>1505</span>/1505 files</span></p>
+      <p class="ln step is-done ready" data-step={steps.length}><span class="g" data-g>●</span><span class="st">Ready</span><span class="clk"></span></p>
+    </div>
+    <div class="card" data-card>
+      <p class="ln"><span class="ok">✓ ready</span></p>
+      <p class="ln"><span class="mu">  host     </span><b>box.example.com</b></p>
+      <p class="ln"><span class="mu">  ends     </span>23:14  (9h from now)<span class="mu">  files </span>1505 restored</p>
+      <p class="ln"><span class="mu">  connect  </span><span class="c">ssh kaggle</span><span class="mu">   stop </span><span class="c">kdev down</span></p>
+    </div>
+    <p class="ln" data-ssh><span class="p">$</span> <span data-type="ssh kaggle">ssh kaggle</span></p>
+    <p class="ln" data-gpu><span class="r">root@kaggle</span>:<span class="c">/kaggle/working</span># <span data-type="nvidia-smi -L">nvidia-smi -L</span></p>
+    <div data-gpu-out><p class="ln mu">GPU 0: Tesla T4 (UUID: GPU-5c1e…)</p><p class="ln mu">GPU 1: Tesla T4 (UUID: GPU-9a4b…)</p></div>
+    <p class="ln" data-cursor><span class="r">root@kaggle</span>:<span class="c">/kaggle/working</span># <span class="cur"></span></p>
+  </div>
+  <figcaption class="sr-only">
+    kdev up submits the notebook, waits for a machine, installs an SSH server, starts the Cloudflare tunnel and restores
+    1505 files, then ssh kaggle opens a root shell with two T4 GPUs.
+  </figcaption>
+</figure>
+
+<style>
+  .term {
+    --t-bg: var(--term-bg);
+    margin: 0; position: relative; border-radius: 16px; overflow: hidden;
+    background: var(--t-bg); color: var(--term-ink);
+    border: 1px solid rgb(255 255 255 / 0.09);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.4), 0 50px 100px -40px rgb(0 184 212 / 0.25), 0 30px 60px -30px rgb(0 0 0 / 0.7);
+    font-family: var(--font-mono); font-size: 13px; line-height: 1.75;
+  }
+  .term::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+    background: radial-gradient(120% 70% at 80% -10%, rgb(0 184 212 / 0.14), transparent 60%);
+  }
+  .term__bar { position: relative; z-index: 2; display: flex; align-items: center; gap: 12px; height: 42px; padding: 0 8px 0 16px; border-bottom: 1px solid rgb(255 255 255 / 0.06); background: rgb(255 255 255 / 0.02); }
+  .term__dots { display: flex; gap: 7px; }
+  .term__dots i { width: 11px; height: 11px; border-radius: 50%; background: #3a4048; }
+  .term__dots i:nth-child(1) { background: #ff5f57; } .term__dots i:nth-child(2) { background: #febc2e; } .term__dots i:nth-child(3) { background: #28c840; }
+  .term__title { flex: 1; text-align: center; color: var(--term-dim); font-size: 12px; }
+  .term__ctl { display: grid; place-items: center; width: 44px; height: 36px; border-radius: 8px; color: var(--term-dim); transition: color 0.2s, background 0.2s; }
+  .term__ctl:hover { color: #fff; background: rgb(255 255 255 / 0.06); }
+  .term__ctl svg { width: 14px; height: 14px; }
+  .term__ctl .i-play { display: none; }
+  .term[data-paused] .i-play { display: block; }
+  .term[data-paused] .i-pause { display: none; }
+
+  .term__body {
+    position: relative; z-index: 2; padding: 18px 20px 22px; height: 500px;
+    overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / 0.18) transparent;
+  }
+  .term__body::-webkit-scrollbar { width: 8px; }
+  .term__body::-webkit-scrollbar-thumb { background: rgb(255 255 255 / 0.16); border-radius: 8px; border: 2px solid var(--term-bg); }
+  .term__body::-webkit-scrollbar-track { background: transparent; }
+  .ln { margin: 0; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+  .p { color: #00b8d4; }
+  .mu { color: var(--term-dim); }
+  .c { color: #43d5ed; }
+  .r { color: #3ddc97; }
+  .ok { color: #3ddc97; }
+  b { color: #fff; font-weight: 600; }
+  .board { margin: 10px 0 12px; padding: 10px 14px; border: 1px solid rgb(255 255 255 / 0.08); border-radius: 10px; background: rgb(255 255 255 / 0.015); }
+  .head { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .step { display: grid; grid-template-columns: 22px 1fr auto; }
+  .step .g { color: #3ddc97; }
+  .step.is-wait .g, .step.is-wait .st { color: #4d5763; }
+  .step.is-run .g { color: #00b8d4; }
+  .step.is-run .st { color: #fff; }
+  .step.ready .g { color: #3ddc97; }
+  .step .clk { color: var(--term-dim); font-variant-numeric: tabular-nums; }
+  .step.is-wait .clk { visibility: hidden; }
+  .sub { display: flex; gap: 12px; align-items: center; padding-left: 22px; }
+  .bar { width: 120px; height: 4px; border-radius: 4px; background: rgb(255 255 255 / 0.08); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: calc(var(--p) * 100%); background: linear-gradient(90deg, #00b8d4, #43d5ed); border-radius: inherit; }
+  .card { padding: 2px 0 12px; }
+  .cur { display: inline-block; width: 8px; height: 15px; background: #00b8d4; vertical-align: -3px; animation: cur 1s steps(2) infinite; }
+  @keyframes cur { 50% { opacity: 0; } }
+  [data-hide] { display: none; }
+
+  @media (max-width: 560px) {
+    .term { font-size: 11px; }
+    .term__body { height: 470px; padding: 14px 14px 18px; }
+    .board { padding: 8px 10px; }
+    .bar { width: 70px; }
+  }
+</style>
+
+<script>
+  const RM = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const sleep = (ms: number, s: AbortSignal) =>
+    new Promise<void>((res, rej) => {
+      const t = setTimeout(res, ms);
+      s.addEventListener('abort', () => { clearTimeout(t); rej(new DOMException('aborted', 'AbortError')); }, { once: true });
+    });
+
+  function setup() {
+    const term = document.querySelector<HTMLElement>('[data-term]');
+    if (!term || term.dataset.ready) return;
+    term.dataset.ready = '1';
+    if (RM()) { term.querySelector('[data-term-toggle]')?.setAttribute('hidden', ''); return; }
+
+    const q = <T extends Element = HTMLElement>(s: string) => term.querySelector<T>(s)!;
+    const qa = (s: string) => [...term.querySelectorAll<HTMLElement>(s)];
+    const steps = qa('[data-step]');
+    const typed = qa('[data-type]');
+    const later = [q('[data-board]'), q('[data-card]'), q('[data-ssh]'), q('[data-gpu]'), q('[data-gpu-out]'), q('[data-cursor]')];
+    const files = q('[data-files]');
+    const bar = q('[data-bar]');
+    const count = q('[data-count]');
+    const total = q('[data-total]');
+    const spin = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
+    // Simulated durations (ms of replay) scaled from the real clocks.
+    const replay = [500, 1900, 900, 300, 300, 700, 2600];
+
+    let paused = false;
+    let waiters: (() => void)[] = [];
+    const gate = async (s: AbortSignal) => { while (paused) { await new Promise<void>((r) => waiters.push(r)); if (s.aborted) throw new DOMException('aborted', 'AbortError'); } };
+    const wait = async (ms: number, s: AbortSignal) => { await gate(s); await sleep(ms, s); await gate(s); };
+
+    const fmt = (ms: number) => { const sec = Math.round(ms / 1000); return sec >= 60 ? `${Math.floor(sec / 60)}m${String(sec % 60).padStart(2, '0')}s` : `${sec}s`; };
+
+    const body = q('[data-term-body]');
+    // Follow the output like a real terminal, unless the reader scrolled up.
+    let follow = true;
+    let programmatic = false;
+    body.addEventListener('scroll', () => {
+      if (programmatic) { programmatic = false; return; }
+      follow = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
+    }, { passive: true });
+    const jump = (top: number) => { if (Math.abs(body.scrollTop - top) < 1) return; programmatic = true; body.scrollTop = top; };
+    const tail = () => { if (follow) jump(body.scrollHeight - body.clientHeight); };
+    new MutationObserver(tail).observe(body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-hide'], characterData: true });
+    const reset = () => {
+      follow = true;
+      jump(0);
+      later.forEach((el) => el.setAttribute('data-hide', ''));
+      typed.forEach((el) => (el.textContent = ''));
+      steps.forEach((el) => { el.className = el.className.replace(/is-\w+/g, '').trim() + ' is-wait'; const g = el.querySelector('[data-g]')!; g.textContent = '○'; });
+      files.setAttribute('data-hide', '');
+      bar.style.setProperty('--p', '0');
+      count.textContent = '0';
+    };
+
+    const type = async (el: HTMLElement, s: AbortSignal) => {
+      const text = el.dataset.type ?? '';
+      for (let i = 1; i <= text.length; i++) { el.textContent = text.slice(0, i); await wait(45 + Math.random() * 60, s); }
+    };
+
+    const run = async (s: AbortSignal) => {
+      for (;;) {
+        reset();
+        await wait(700, s);
+        await type(typed[0], s);
+        await wait(380, s);
+        later[0].removeAttribute('data-hide');
+        let elapsed = 0;
+        for (let i = 0; i < steps.length - 1; i++) {
+          const el = steps[i];
+          el.classList.replace('is-wait', 'is-run');
+          const g = el.querySelector('[data-g]')!;
+          const clk = el.querySelector<HTMLElement>('.clk')!;
+          const real = clk.dataset.clk!;
+          const realMs = (/(\d+)m/.exec(real)?.[1] ? +/(\d+)m/.exec(real)![1] * 60000 : 0) + +(/(\d+)s/.exec(real)?.[1] ?? 0) * 1000;
+          const dur = replay[i];
+          const t0 = performance.now();
+          if (i === steps.length - 2) files.removeAttribute('data-hide');
+          let f = 0;
+          for (;;) {
+            const k = Math.min(1, (performance.now() - t0) / dur);
+            g.textContent = spin[f++ % spin.length];
+            clk.textContent = fmt(realMs * k);
+            total.textContent = fmt(elapsed + realMs * k);
+            if (i === steps.length - 2) { bar.style.setProperty('--p', String(k)); count.textContent = String(Math.round(1505 * k)); }
+            if (k >= 1) break;
+            await wait(80, s);
+          }
+          elapsed += realMs;
+          g.textContent = '✓';
+          el.classList.replace('is-run', 'is-done');
+        }
+        const ready = steps[steps.length - 1];
+        ready.classList.replace('is-wait', 'is-done');
+        ready.querySelector('[data-g]')!.textContent = '●';
+        await wait(500, s);
+        later[1].removeAttribute('data-hide');
+        await wait(1100, s);
+        later[2].removeAttribute('data-hide');
+        await type(typed[1], s);
+        await wait(700, s);
+        later[3].removeAttribute('data-hide');
+        await type(typed[2], s);
+        await wait(400, s);
+        later[4].removeAttribute('data-hide');
+        later[5].removeAttribute('data-hide');
+        await wait(5200, s);
+      }
+    };
+
+    const ctl = new AbortController();
+    const btn = q<HTMLButtonElement>('[data-term-toggle]');
+    btn.addEventListener('click', () => {
+      paused = !paused;
+      term.toggleAttribute('data-paused', paused);
+      btn.setAttribute('aria-label', paused ? 'Play the replay' : 'Pause the replay');
+      if (!paused) { waiters.forEach((w) => w()); waiters = []; }
+    });
+    // Only play while visible: no CPU spent on a terminal you scrolled past.
+    let started = false;
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting && !started) { started = true; run(ctl.signal).catch(() => {}); }
+      if (!btn.matches('[data-user]')) {
+        if (!e.isIntersecting && started && !paused) { paused = true; }
+        else if (e.isIntersecting && paused && !term.hasAttribute('data-paused')) { paused = false; waiters.forEach((w) => w()); waiters = []; }
+      }
+    });
+    io.observe(term);
+    document.addEventListener('astro:before-swap', () => { ctl.abort(); io.disconnect(); waiters.forEach((w) => w()); }, { once: true });
+  }
+  document.addEventListener('astro:page-load', setup);
+</script>

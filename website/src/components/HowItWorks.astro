@@ -1,0 +1,213 @@
+---
+const steps = [
+  { t: 'Is a box already up?', d: 'kdev asks the Kaggle API for the session status. If one is running, from any account or machine, you connect to it. No second session.', on: ['laptop', 'api'], e: ['e1'] },
+  { t: 'Find where you left off', d: 'It walks back from the latest saved version, past source-only saves, to the one that holds your files, stacking a session that was cut short on its base.', on: ['laptop', 'store'], e: ['e2'] },
+  { t: 'Save & Run All', d: "Your notebook goes up with kdev's cell on top. Kaggle starts a container on the account with the hours, and nothing below kdev's cell runs.", on: ['api', 'box'], e: ['e1', 'e3'] },
+  { t: 'The cell becomes a server', d: 'sshd with your keys, the notebook environment exported to every session, your repo cloned. The plan is written to .kdev/state.json before anything slow.', on: ['box'], e: [] },
+  { t: 'Tunnel out', d: 'cloudflared dials out to Cloudflare. Nothing listens on a public port; your ssh reaches the box through the edge, by hostname.', on: ['box', 'edge', 'laptop'], e: ['e4', 'e5'] },
+  { t: 'Restore, then hand over', d: "The box downloads every file straight from Kaggle's signed URLs and puts back links, empty folders and exec bits. kdev checks ssh, then opens VS Code or a shell.", on: ['store', 'box', 'laptop'], e: ['e6', 'e5'] },
+];
+---
+
+<section class="section how" id="how" aria-labelledby="how-h">
+  <div class="grid-ground how__ground" aria-hidden="true"></div>
+  <div class="wrap">
+    <header class="section__head">
+      <span class="eyebrow">How it works</span>
+      <h2 id="how-h" class="h-section">One cell on top of your notebook.<br /><span class="dim">Six steps to a shell.</span></h2>
+      <p class="lede">The simple picture is on the right. When you want every module, file and API call, <a class="link" href="#architecture" data-arch-open="up" data-arch-from="#how-stage">open the full architecture</a>.</p>
+    </header>
+
+    <div class="how__grid" data-how>
+      <ol class="how__steps" role="list">
+        {steps.map((s, i) => (
+          <li>
+            <button type="button" class="how__step" data-how-step={i} data-on={s.on.join(' ')} data-edges={s.e.join(' ')} aria-pressed={i === 0 ? 'true' : 'false'}>
+              <span class="how__n">{String(i + 1).padStart(2, '0')}</span>
+              <span class="how__t">{s.t}</span>
+              <span class="how__d"><span>{s.d}</span></span>
+              <span class="how__prog" aria-hidden="true"></span>
+            </button>
+          </li>
+        ))}
+      </ol>
+
+      <div class="panel how__stage" id="how-stage">
+        <button class="how__ctl" type="button" data-how-toggle aria-label="Pause the walkthrough">
+          <svg class="i-pause" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="4" y="3" width="3" height="10" rx="1"></rect><rect x="9" y="3" width="3" height="10" rx="1"></rect></svg>
+          <svg class="i-play" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 3.2v9.6a.6.6 0 0 0 .9.5l7.6-4.8a.6.6 0 0 0 0-1L5.9 2.7a.6.6 0 0 0-.9.5Z"></path></svg>
+        </button>
+        <svg class="dia" viewBox="0 0 760 390" role="img" aria-labelledby="dia-t">
+          <title id="dia-t">Your machine talks to the Kaggle API to start the box; the box dials out to Cloudflare's edge, which your ssh reaches by hostname; saved notebook versions are restored into the box.</title>
+          <defs>
+            <linearGradient id="pulse" x1="0" x2="1"><stop offset="0" stop-color="#00b8d4" stop-opacity="0" /><stop offset=".6" stop-color="#43d5ed" /><stop offset="1" stop-color="#ffffff" /></linearGradient>
+          </defs>
+          <g class="edges">
+            <path id="e1" d="M200 172 C 250 172, 240 54, 290 54" />
+            <path id="e2" d="M200 236 C 250 236, 240 334, 290 334" />
+            <path id="e3" d="M470 54 C 520 54, 510 150, 560 150" />
+            <path id="e4" d="M560 200 L 432 200" />
+            <path id="e5" d="M328 200 L 200 200" />
+            <path id="e6" d="M470 334 C 520 334, 510 250, 560 250" />
+          </g>
+          <g class="pulses" aria-hidden="true">
+            {['e1', 'e2', 'e3', 'e4', 'e5', 'e6'].map((id) => <use href={`#${id}`} class="pl" data-pulse={id} />)}
+          </g>
+
+          <g class="n" data-node="laptop">
+            <rect x="20" y="130" width="180" height="140" rx="14" />
+            <text class="n__h" x="40" y="160">Your machine</text>
+            <rect class="n__chip" x="40" y="178" width="140" height="30" rx="7" /><text class="n__c" x="54" y="198">kdev</text>
+            <rect class="n__chip" x="40" y="218" width="140" height="30" rx="7" /><text class="n__c" x="54" y="238">VS Code / ssh</text>
+          </g>
+          <g class="n" data-node="api">
+            <rect x="290" y="22" width="180" height="64" rx="14" />
+            <text class="n__h" x="310" y="50">Kaggle API</text>
+            <text class="n__s" x="310" y="70">save · run · quota</text>
+          </g>
+          <g class="n" data-node="store">
+            <rect x="290" y="302" width="180" height="64" rx="14" />
+            <text class="n__h" x="310" y="330">Saved versions</text>
+            <text class="n__s" x="310" y="350">v12 · v13 · v14 …</text>
+          </g>
+          <g class="n n--edge" data-node="edge">
+            <rect x="328" y="172" width="104" height="56" rx="28" />
+            <text class="n__h" x="380" y="196" text-anchor="middle">Cloudflare</text>
+            <text class="n__s" x="380" y="214" text-anchor="middle">edge</text>
+          </g>
+          <g class="n" data-node="box">
+            <rect x="560" y="110" width="180" height="180" rx="14" />
+            <text class="n__h" x="580" y="140">The box</text>
+            <text class="n__s" x="580" y="160">a notebook session</text>
+            <rect class="n__chip" x="580" y="176" width="140" height="30" rx="7" /><text class="n__c" x="594" y="196">sshd · tunnel</text>
+            <rect class="n__chip" x="580" y="214" width="140" height="30" rx="7" /><text class="n__c" x="594" y="234">/kaggle/working</text>
+            <g class="gpu"><rect x="580" y="256" width="10" height="10" /><rect x="594" y="256" width="10" height="10" /><text class="n__s" x="612" y="265">T4 ×2</text></g>
+          </g>
+        </svg>
+        <button type="button" class="how__more" data-arch-open="up" data-arch-from="#how-stage">
+          <span class="how__more-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="6" height="5" rx="1.5"></rect><rect x="15" y="4" width="6" height="5" rx="1.5"></rect><rect x="3" y="15" width="6" height="5" rx="1.5"></rect><rect x="15" y="15" width="6" height="5" rx="1.5"></rect><path d="M9 6.5h6M6 9v6M18 9v6M9 17.5h6"></path></svg>
+          </span>
+          <span class="how__more-t"><b>The full architecture</b><span>15 components · 5 flows, step by step</span></span>
+          <span class="how__more-k" aria-hidden="true">⤢</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .how__ground { position: absolute; inset: 0; opacity: 0.6; pointer-events: none; }
+  .how__grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(24px, 4vw, 56px); align-items: start; }
+  .how__steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .how__step {
+    position: relative; display: grid; grid-template-columns: 40px 1fr; width: 100%; text-align: left;
+    padding: 14px 16px; border-radius: 12px; transition: background 0.3s;
+  }
+  .how__step:hover { background: var(--accent-soft); }
+  .how__n { font-family: var(--font-pixel); font-size: 11px; color: var(--ink-3); padding-top: 4px; transition: color 0.3s; }
+  .how__t { font-weight: 600; font-size: 17px; letter-spacing: -0.015em; color: var(--ink-2); transition: color 0.3s; }
+  .how__d {
+    grid-column: 2; color: var(--ink-2); font-size: 14.5px; line-height: 1.55;
+    display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.45s var(--ease), opacity 0.35s, margin 0.45s var(--ease);
+    overflow: hidden;
+  }
+  .how__d > span { min-height: 0; overflow: hidden; }
+  .how__step[aria-pressed='true'] { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+  .how__step[aria-pressed='true'] .how__n { color: var(--accent-ink); }
+  .how__step[aria-pressed='true'] .how__t { color: var(--ink); }
+  .how__step[aria-pressed='true'] .how__d { grid-template-rows: 1fr; opacity: 1; margin-top: 6px; }
+  .how__prog { position: absolute; left: 16px; right: 16px; bottom: 0; height: 2px; background: var(--accent); transform: scaleX(0); transform-origin: left; border-radius: 2px; }
+  .how__step[aria-pressed='true'][data-running] .how__prog { animation: prog var(--dur, 5s) linear forwards; }
+  [data-how][data-paused] .how__prog { animation-play-state: paused !important; }
+  @keyframes prog { to { transform: scaleX(1); } }
+
+  .how__stage { position: sticky; top: calc(var(--nav-h) + 24px); padding: clamp(14px, 2.4vw, 28px); overflow: hidden; }
+  .how__ctl { position: absolute; top: 12px; right: 12px; z-index: 2; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; color: var(--ink-3); transition: color 0.2s, background 0.2s; }
+  .how__ctl:hover { color: var(--ink); background: var(--accent-soft); }
+  .how__ctl svg { width: 14px; height: 14px; }
+  .how__ctl .i-play { display: none; }
+  [data-how][data-paused] .how__ctl .i-play { display: block; }
+  [data-how][data-paused] .how__ctl .i-pause { display: none; }
+
+  .how__more {
+    display: flex; align-items: center; gap: 14px; width: 100%; margin-top: 14px; padding: 12px 14px; text-align: left;
+    border-radius: 12px; border: 1px solid var(--line-2); background: var(--bg-2);
+    transition: border-color 0.25s, background 0.25s, transform 0.3s var(--ease);
+  }
+  .how__more:hover { border-color: var(--accent); background: var(--accent-soft); transform: translateY(-1px); }
+  .how__more-ico { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-ink); flex: none; }
+  .how__more-ico svg { width: 22px; height: 22px; }
+  .how__more:hover .how__more-ico svg { animation: wiggle 1.2s var(--ease); }
+  @keyframes wiggle { 30% { transform: scale(1.12); } 60% { transform: scale(0.96); } }
+  .how__more-t { display: grid; gap: 1px; flex: 1; }
+  .how__more-t b { font-weight: 600; font-size: 15px; }
+  .how__more-t span { font-size: 13px; color: var(--ink-3); }
+  .how__more-k { font-size: 18px; color: var(--ink-3); transition: transform 0.3s var(--ease), color 0.2s; }
+  .how__more:hover .how__more-k { transform: scale(1.2); color: var(--accent-ink); }
+  .dia { width: 100%; height: auto; overflow: visible; }
+  .edges path { fill: none; stroke: var(--line-2); stroke-width: 1.5; stroke-dasharray: 3 6; transition: stroke 0.4s; }
+  .edges path.on { stroke: color-mix(in srgb, var(--accent) 55%, transparent); stroke-dasharray: none; }
+  .pl { fill: none; stroke: url(#pulse); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 40 400; stroke-dashoffset: 40; opacity: 0; transition: opacity 0.3s; }
+  .pl.on { opacity: 1; animation: pulse-run 1.8s var(--ease-in-out) infinite; }
+  @keyframes pulse-run { from { stroke-dashoffset: 40; } to { stroke-dashoffset: -260; } }
+  .n rect:first-child { fill: var(--panel-2); stroke: var(--line-2); transition: stroke 0.4s, fill 0.4s; }
+  .n.on rect:first-child { stroke: var(--accent); fill: color-mix(in srgb, var(--accent) 7%, var(--panel-2)); }
+  .n--edge rect:first-child { rx: 28; }
+  .n__h { font-family: var(--font-sans); font-weight: 600; font-size: 15px; fill: var(--ink); }
+  .n__s { font-family: var(--font-mono); font-size: 11px; fill: var(--ink-3); }
+  .n__chip { fill: color-mix(in srgb, var(--ink) 5%, transparent); stroke: var(--line); }
+  .n__c { font-family: var(--font-mono); font-size: 12px; fill: var(--ink-2); }
+  .gpu rect { fill: var(--ink-3); transition: fill 0.4s; }
+  .n.on .gpu rect { fill: #3ddc97; }
+
+  @media (max-width: 900px) {
+    .how__grid { grid-template-columns: 1fr; }
+    .how__stage { position: relative; top: 0; order: -1; }
+  }
+</style>
+
+<script>
+  function setup() {
+    const root = document.querySelector<HTMLElement>('[data-how]');
+    if (!root || root.dataset.ready) return;
+    root.dataset.ready = '1';
+    const btns = [...root.querySelectorAll<HTMLButtonElement>('[data-how-step]')];
+    const nodes = [...root.querySelectorAll<SVGGElement>('[data-node]')];
+    const edges = [...root.querySelectorAll<SVGPathElement>('.edges path')];
+    const pulses = [...root.querySelectorAll<SVGUseElement>('[data-pulse]')];
+    const toggle = root.querySelector<HTMLButtonElement>('[data-how-toggle]')!;
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const DUR = 5200;
+    let cur = 0, timer = 0, auto = !reduce, inView = false;
+
+    const show = (i: number) => {
+      cur = i;
+      btns.forEach((b, k) => { b.setAttribute('aria-pressed', String(k === i)); b.toggleAttribute('data-running', k === i && auto); b.style.setProperty('--dur', `${DUR}ms`); });
+      const on = new Set(btns[i].dataset.on!.split(' '));
+      const es = new Set(btns[i].dataset.edges!.split(' ').filter(Boolean));
+      nodes.forEach((n) => n.classList.toggle('on', on.has(n.dataset.node!)));
+      edges.forEach((e) => e.classList.toggle('on', es.has(e.id)));
+      pulses.forEach((p) => p.classList.toggle('on', es.has(p.dataset.pulse!) && !reduce));
+      schedule();
+    };
+    const schedule = () => {
+      clearTimeout(timer);
+      if (auto && inView) timer = window.setTimeout(() => show((cur + 1) % btns.length), DUR);
+    };
+    const setAuto = (v: boolean) => {
+      auto = v;
+      root.toggleAttribute('data-paused', !v);
+      toggle.setAttribute('aria-label', v ? 'Pause the walkthrough' : 'Play the walkthrough');
+      show(cur);
+    };
+    btns.forEach((b, i) => b.addEventListener('click', () => { if (auto) setAuto(false); show(i); }));
+    toggle.addEventListener('click', () => setAuto(!auto));
+    if (reduce) { toggle.hidden = true; root.setAttribute('data-paused', ''); }
+    const io = new IntersectionObserver(([e]) => { inView = e.isIntersecting; if (inView) show(cur); else clearTimeout(timer); }, { threshold: 0.35 });
+    io.observe(root);
+    show(0);
+    document.addEventListener('astro:before-swap', () => { clearTimeout(timer); io.disconnect(); }, { once: true });
+  }
+  document.addEventListener('astro:page-load', setup);
+</script>

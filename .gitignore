@@ -9,3 +9,6 @@ build/
 .coverage
 htmlcov/
 .DS_Store
+
+# Design kit fetched for the website build-out (Leonxlnx/taste-skill, MIT); local only.
+.agents/skills/design-taste-frontend/

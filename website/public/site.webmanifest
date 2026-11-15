@@ -1,0 +1,10 @@
+{
+  "name": "kdev",
+  "short_name": "kdev",
+  "description": "A Kaggle notebook as your remote dev box.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#05070a",
+  "theme_color": "#05070a",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

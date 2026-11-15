@@ -1,0 +1,212 @@
+---
+import Base from '../layouts/Base.astro';
+import PixelField from '../components/PixelField.astro';
+import Terminal from '../components/Terminal.astro';
+import Features from '../components/Features.astro';
+import HowItWorks from '../components/HowItWorks.astro';
+import Endings from '../components/Endings.astro';
+import Commands from '../components/Commands.astro';
+import Contribute from '../components/Contribute.astro';
+import Architecture from '../components/Architecture.astro';
+import Faq from '../components/Faq.astro';
+import { faq } from '../data/faq';
+import { quota } from '../data/kaggle';
+import { site } from '../data/site';
+
+const COPY = '<svg class="i-copy" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="2"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/></svg><svg class="i-done" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+const origin = new URL('/', Astro.site).href;
+const jsonld = [
+  {
+    '@type': 'SoftwareApplication',
+    '@id': `${origin}#software`,
+    name: 'kdev',
+    alternateName: 'kdev-cli',
+    description: site.description,
+    url: origin,
+    applicationCategory: 'DeveloperApplication',
+    applicationSubCategory: 'Remote development',
+    operatingSystem: 'macOS, Linux',
+    softwareVersion: site.version,
+    license: 'https://opensource.org/licenses/MIT',
+    isAccessibleForFree: true,
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    downloadUrl: site.pypi,
+    installUrl: `${origin}docs/`,
+    softwareHelp: `${origin}docs/`,
+    codeRepository: site.repo,
+    programmingLanguage: 'Python',
+    keywords: 'Kaggle, SSH, VS Code Remote-SSH, free GPU, T4, P100, TPU, remote development, Cloudflare Tunnel, persistent storage, CLI',
+    featureList: [
+      'SSH and VS Code Remote-SSH into a Kaggle notebook session',
+      'Files in /kaggle/working restored on every new session',
+      `Pooled weekly quota across a Kaggle group: ${quota.gpuHours} GPU-hours and ${quota.tpuHours} TPU-hours per account`,
+      'Cloudflare Tunnel with a stable hostname and no open ports',
+      'Git autosave every 15 minutes and JSON output for scripts; port forwarding on main for the next release',
+    ],
+    sameAs: [site.repo, site.pypi],
+  },
+  {
+    '@type': 'FAQPage',
+    '@id': `${origin}#faq`,
+    mainEntity: faq.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
+  },
+];
+
+const limits = [
+  { t: 'Public-key SSH only', d: 'Password login is off. The box accepts the keys saved in the workspace; delete a line to revoke a machine.' },
+  { t: 'Secrets live in the notebook', d: 'Kaggle has no API for notebook Secrets, so tunnel credentials sit in the private notebook. Anyone with Can Edit can read them.' },
+  { t: "Kaggle's limits still apply", d: '12 hours per GPU session, 9 on TPU, a weekly quota per account, 20 GB of /kaggle/working saved per version.' },
+  { t: 'Know the rules you work under', d: 'Kaggle allows one account per person and restricts tunnelling out of notebooks. Accounts have been banned for both. kdev hides nothing.' },
+];
+---
+
+<Base jsonld={jsonld}>
+  <!-- hero -->
+  <section class="hero" aria-labelledby="hero-h">
+    <PixelField />
+    <div class="wrap hero__grid">
+      <div class="hero__copy" data-enter>
+        <a class="chip hero__chip" href="/changelog/">
+          <span class="dot dot--live" aria-hidden="true"></span>
+          New on main: port forwarding and session history
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+        <h1 id="hero-h" class="h-display">A Kaggle notebook as your <span class="grad">remote dev&nbsp;box.</span></h1>
+        <p class="lede">
+          One command starts a GPU box you can <code>ssh</code> into or open in VS Code. Leave whenever you like: your files are there next
+          time, on any account in your Kaggle group, from any machine.
+        </p>
+        <div class="hero__actions">
+          <div class="cmd hero__cmd">
+            <span class="cmd__p" aria-hidden="true">$</span>
+            <span>{site.install}</span>
+            <button type="button" class="copy" data-copy={site.install} aria-label="Copy the install command" set:html={COPY} />
+          </div>
+          <a class="btn" href="/docs/">Read the docs<span class="arrow" aria-hidden="true">→</span></a>
+        </div>
+        <dl class="hero__facts">
+          <div><dt>GPU-hours a week, per account</dt><dd>30</dd></div>
+          <div><dt>TPU-hours a week, per account</dt><dd>20</dd></div>
+          <div><dt>RAM on a T4 box</dt><dd>31 GB</dd></div>
+          <div><dt>public ports opened</dt><dd>0</dd></div>
+        </dl>
+      </div>
+      <div class="hero__term">
+        <Terminal />
+      </div>
+    </div>
+  </section>
+
+  <Features />
+  <HowItWorks />
+  <Architecture />
+  <Endings />
+  <Commands />
+
+  <!-- limits -->
+  <section class="section limits" id="limits" aria-labelledby="limits-h">
+    <div class="wrap limits__grid">
+      <header class="section__head">
+        <span class="eyebrow">Security and limits</span>
+        <h2 id="limits-h" class="h-section">Plain about what<br />it can't do.</h2>
+        <p class="lede">kdev is a thin layer over Kaggle and Cloudflare. It does nothing to hide what it does, and it is not a way around anyone's rules.</p>
+        <a class="link limits__more" href="/docs/security/">Security and limits, in full →</a>
+      </header>
+      <ul class="limits__list" role="list">
+        {limits.map((l, i) => (
+          <li class="limit">
+            <span class="limit__n" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
+            <div>
+              <h3>{l.t}</h3>
+              <p>{l.d}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <Faq />
+  <Contribute />
+
+  <!-- close -->
+  <section class="close" aria-labelledby="close-h">
+    <div class="wrap close__inner">
+      <h2 id="close-h" class="close__h">Four commands.<br /><span class="grad">Then it's yours.</span></h2>
+      <div class="panel close__code">
+        <pre><code><span class="c"># once per machine</span>
+<span class="p">$</span> kdev setup
+<span class="c"># start the box, or connect to the running one</span>
+<span class="p">$</span> kdev up
+<span class="c"># or VS Code → Remote-SSH → kaggle</span>
+<span class="p">$</span> ssh kaggle
+<span class="c"># optional: stop early and hand the quota back</span>
+<span class="p">$</span> kdev down</code></pre>
+      </div>
+      <div class="close__cta">
+        <a class="btn btn--accent" href="/docs/">Install kdev<span class="arrow" aria-hidden="true">→</span></a>
+        <a class="btn btn--ghost" href={site.repo} rel="noopener">Star on GitHub</a>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .hero { position: relative; isolation: isolate; min-height: calc(100svh - var(--nav-h)); display: grid; align-items: center; padding-block: clamp(32px, 6vw, 72px); margin-top: calc(var(--nav-h) * -1); padding-top: calc(var(--nav-h) + clamp(32px, 5vw, 56px)); }
+  .hero__grid { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1.04fr) minmax(0, 1fr); gap: clamp(32px, 5vw, 64px); align-items: center; }
+  .hero__copy { display: grid; gap: 26px; justify-items: start; }
+  .hero__chip { transition: border-color 0.2s, color 0.2s; min-height: 34px; }
+  .hero__chip:hover { border-color: var(--accent); color: var(--ink); }
+  .hero__chip .arrow { transition: transform 0.3s var(--ease); }
+  .hero__chip:hover .arrow { transform: translateX(3px); }
+  .hero code { font-size: 0.9em; padding: 0.08em 0.35em; border-radius: 6px; background: var(--accent-soft); color: var(--ink); }
+  .hero__actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .hero__facts { display: grid; grid-template-columns: repeat(4, auto); justify-content: start; gap: 16px clamp(20px, 3.4vw, 40px); margin: 8px 0 0; padding-top: 22px; border-top: 1px solid var(--line); width: 100%; }
+  .hero__facts div { display: flex; flex-direction: column-reverse; gap: 2px; }
+  .hero__facts dd { margin: 0; font-size: 2rem; font-weight: 600; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+  .hero__facts dt { font-size: 13px; color: var(--ink-3); }
+  .hero__term { position: relative; }
+  @media (prefers-reduced-motion: no-preference) {
+    .hero__term { animation: term-in 1.1s var(--ease) 0.25s both; }
+  }
+  @keyframes term-in { from { opacity: 0; transform: translateY(24px) scale(0.98); filter: blur(8px); } }
+
+  .limits__grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 5vw, 72px); }
+  .limits .section__head { margin-bottom: 0; align-content: start; position: sticky; top: calc(var(--nav-h) + 32px); }
+  .limits__more { justify-self: start; margin-top: 8px; }
+  .limits__list { list-style: none; margin: 0; padding: 0; }
+  .limit { display: grid; grid-template-columns: 56px 1fr; gap: 8px; padding: 26px 0; border-top: 1px solid var(--line); }
+  .limit:last-child { border-bottom: 1px solid var(--line); }
+  .limit__n { font-family: var(--font-pixel); font-size: 12px; color: var(--accent-ink); padding-top: 6px; }
+  .limit h3 { font-size: 1.25rem; margin-bottom: 8px; }
+  .limit p { color: var(--ink-2); }
+
+  .close { position: relative; padding-block: clamp(96px, 14vw, 180px); border-top: 1px solid var(--line); overflow: hidden; }
+  .close::before { content: ''; position: absolute; left: 50%; top: 60%; width: 900px; height: 500px; translate: -50% -50%; background: radial-gradient(closest-side, var(--accent-glow), transparent); opacity: 0.35; pointer-events: none; }
+  .close__inner { position: relative; display: grid; justify-items: center; text-align: center; gap: 36px; }
+  .close__h { font-size: clamp(2.6rem, 6.4vw, 5.2rem); letter-spacing: -0.05em; line-height: 0.98; }
+  .close__code { text-align: left; padding: 22px 26px; width: min(560px, 100%); }
+  .close__code pre { margin: 0; font-size: 14.5px; line-height: 1.85; overflow-x: auto; }
+  .close__code .c { color: var(--ink-3); }
+  .close__code .p { color: var(--accent-ink); }
+  .close__cta { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+  @media (max-width: 980px) {
+    .hero { min-height: 0; }
+    .hero__grid { grid-template-columns: 1fr; }
+    .limits__grid { grid-template-columns: 1fr; }
+    .limits .section__head { position: static; }
+  }
+  @media (max-width: 520px) {
+    .hero__actions { width: 100%; }
+    .hero__actions > * { width: 100%; }
+    .hero__cmd { font-size: 13px; }
+    .hero__cmd .copy { margin-left: auto; }
+    .hero__facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .hero__facts dd { font-size: 1.6rem; }
+    .hero__facts dt { font-size: 12px; }
+    .close__cta { width: 100%; }
+    .close__cta .btn { flex: 1; }
+  }
+</style>

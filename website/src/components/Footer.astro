@@ -1,0 +1,108 @@
+---
+import Logo from './Logo.astro';
+import { site, links } from '../data/site';
+
+const cols = [
+  {
+    title: 'Use',
+    items: [
+      { href: '/docs/', label: 'Get started' },
+      { href: '/docs/commands/', label: 'Commands' },
+      { href: '/docs/troubleshooting/', label: 'Troubleshooting' },
+      { href: '/changelog/', label: 'Changelog' },
+    ],
+  },
+  {
+    title: 'Project',
+    items: [
+      { href: site.repo, label: 'Source on GitHub', ext: true },
+      { href: links.issues, label: 'Issues', ext: true },
+      { href: links.discussions, label: 'Discussions', ext: true },
+      { href: '/docs/contributing/', label: 'Contributing' },
+    ],
+  },
+  {
+    title: 'Legal',
+    items: [
+      { href: '/disclaimer/', label: 'Disclaimer' },
+      { href: '/privacy/', label: 'Privacy' },
+      { href: links.license, label: 'MIT licence', ext: true },
+      { href: links.security, label: 'Security policy', ext: true },
+    ],
+  },
+];
+const year = new Date().getFullYear();
+---
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__top">
+      <div class="foot__intro">
+        <p class="foot__say">Close the laptop.<br /><span class="dim">Your files will be there.</span></p>
+        <a class="cmd foot__cmd" href="/docs/">
+          <span class="cmd__p">$</span><span>{site.install}</span>
+        </a>
+      </div>
+      {cols.map((c) => (
+        <nav class="foot__col" aria-label={c.title}>
+          <p class="foot__h">{c.title}</p>
+          <ul>
+            {c.items.map((i) => (
+              <li><a class="link-quiet" href={i.href} rel={i.ext ? 'noopener' : undefined}>{i.label}{i.ext && <span aria-hidden="true"> ↗</span>}</a></li>
+            ))}
+          </ul>
+        </nav>
+      ))}
+    </div>
+
+    <div class="foot__mark" aria-hidden="true">
+      <Logo class="foot__logo" label="" animate />
+    </div>
+
+    <div class="foot__base">
+      <p>
+        <strong>Unofficial.</strong> kdev is an independent open-source project, built for research and education. It is not
+        affiliated with, endorsed by, or supported by Kaggle, Google or Cloudflare. <a class="link" href="/disclaimer/">Read the disclaimer</a>. Product names and logos are trademarks of their owners.
+      </p>
+      <p class="dim">© {year} kdev contributors · MIT · v{site.version}</p>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .foot { border-top: 1px solid var(--line); padding-top: clamp(56px, 8vw, 96px); background: var(--bg-2); overflow: hidden; }
+  .foot__top { display: grid; grid-template-columns: 1.6fr repeat(3, 1fr); gap: 40px; }
+  .foot__say { font-size: clamp(1.4rem, 2.4vw, 1.9rem); font-weight: 600; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 24px; }
+  .foot__cmd { transition: border-color 0.2s, transform 0.25s var(--ease); }
+  .foot__cmd:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .foot__h { font-family: var(--font-pixel); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 14px; }
+  .foot__col ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .link-quiet { display: inline-flex; min-height: 34px; align-items: center; color: var(--ink-2); font-size: 15px; transition: color 0.2s; }
+  .link-quiet:hover { color: var(--accent-ink); }
+  .foot__mark { margin-top: clamp(48px, 8vw, 96px); color: var(--ink); opacity: 0.95; }
+  .foot__mark :global(.logo) { width: 100%; }
+  .foot__base {
+    display: flex; justify-content: space-between; gap: 24px; align-items: flex-end;
+    padding-block: 28px 36px; margin-top: clamp(28px, 4vw, 48px); border-top: 1px solid var(--line);
+    font-size: 13.5px; color: var(--ink-2);
+  }
+  .foot__base p:first-child { max-width: 70ch; }
+  .foot__base strong { color: var(--ink); }
+  @media (max-width: 900px) {
+    .foot__top { grid-template-columns: 1fr 1fr; }
+    .foot__intro { grid-column: 1 / -1; }
+    .foot__base { flex-direction: column; align-items: flex-start; }
+  }
+  @media (max-width: 480px) {
+    .foot__cmd { font-size: 13px; }
+  }
+</style>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    const el = document.querySelector<HTMLElement>('.foot__mark');
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { el.setAttribute('data-inview', ''); io.disconnect(); } }, { threshold: 0.3 });
+    io.observe(el);
+  });
+</script>
