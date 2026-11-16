@@ -5,11 +5,15 @@ import { site } from '../data/site';
 const path = Astro.url.pathname;
 const items = [
   { href: '/#features', label: 'Features' },
-  { href: '/#how', label: 'How it works' },
+  { href: '/docs/how-it-works/', label: 'How it works' },
   { href: '/docs/', label: 'Docs' },
   { href: '/changelog/', label: 'Changelog' },
 ];
-const isActive = (href: string) => !href.includes('#') && path.startsWith(href);
+// The most specific match wins, so /docs/how-it-works/ lights "How it works", not "Docs".
+const active = items
+  .filter((i) => !i.href.includes('#') && path.startsWith(i.href))
+  .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+const isActive = (href: string) => href === active;
 ---
 
 <header class="nav" data-nav>

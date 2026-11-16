@@ -1,6 +1,6 @@
 [project]
 name = "kdev-cli"
-version = "0.1.4"
+version = "0.2.0"
 description = "A Kaggle notebook as your remote dev box: SSH and VS Code in, files that persist across sessions, accounts and machines."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -28,6 +28,9 @@ dependencies = [
     "kaggle>=2.2,<3",
     "typer>=0.27,<1",
     "questionary>=2.0,<3",
+    # The home menu is a small prompt_toolkit app of its own (questionary is
+    # built on it too).
+    "prompt-toolkit>=3.0.36,<4",
     "rich>=13,<16",
 ]
 

@@ -7,6 +7,7 @@ machine.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import sys
 
@@ -19,9 +20,44 @@ from .commands import doctor as doctor_cmd
 from .commands import tunnel as tunnel_cmd
 from .errors import Cancelled, KdevError
 
+
+def _brand_help() -> None:
+    """--help in kdev's own palette: accent for what you type, grey for the rest."""
+    import typer.rich_utils as ru
+
+    ru.STYLE_OPTION = f"bold {ui.ACCENT}"
+    ru.STYLE_SWITCH = ui.ACCENT
+    ru.STYLE_NEGATIVE_OPTION = ui.ACCENT
+    ru.STYLE_NEGATIVE_SWITCH = ui.ACCENT
+    ru.STYLE_TYPES = ui.MUTED
+    ru.STYLE_USAGE = f"bold {ui.ACCENT}"
+    ru.STYLE_USAGE_COMMAND = "bold"
+    ru.STYLE_COMMANDS_TABLE_FIRST_COLUMN = f"bold {ui.ACCENT}"
+    ru.STYLE_OPTIONS_PANEL_BORDER = "grey42"
+    ru.STYLE_COMMANDS_PANEL_BORDER = "grey42"
+    ru.STYLE_HELPTEXT = ui.MUTED
+    ru.STYLE_OPTION_DEFAULT = ui.MUTED
+
+
+_brand_help()
+
+EXAMPLES = """[bold]Examples[/bold]
+
+  [bold #00b8d4]kdev[/]                          the home screen: the box, quota, one key to act
+  [bold #00b8d4]kdev up[/]                       start the box, or connect to the one running
+  [bold #00b8d4]kdev up --gpu none --hours 2[/]  a CPU box that uses no GPU quota
+  [bold #00b8d4]kdev up --open code -y[/]        no questions; open VS Code when ready
+  [bold #00b8d4]kdev ssh -- nvidia-smi[/]        run one command on the box
+  [bold #00b8d4]kdev forward 8888[/]             reach the box's Jupyter on localhost:8888
+  [bold #00b8d4]kdev status --json[/]            for scripts: JSON on stdout, nothing else
+  [bold #00b8d4]kdev down[/]                     stop it; your files are saved either way
+
+Docs: https://kdev-cli.pages.dev/docs/"""
+
 app = typer.Typer(
     name="kdev",
     help=__doc__,
+    epilog=EXAMPLES,
     no_args_is_help=False,
     rich_markup_mode="rich",
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -99,6 +135,13 @@ def _dispatch(argv: list[str]) -> None:
         raise typer.Exit(code)
 
 
+def _quote_commands(message: str) -> str:
+    """click quotes names as 'status'; kdev draws commands as commands."""
+    import re
+
+    return re.sub(r"'([^'\s]+)'", r"`\1`", message)
+
+
 def _explain(e: api.KaggleError) -> tuple[str, str]:
     text = str(e)
     if e.status == 401:
@@ -136,18 +179,33 @@ def main() -> None:
         sys.exit(1)
     except KeyboardInterrupt:
         ui.errconsole.print(ui.Text("\n  interrupted", style="kdev.muted"))
+        if len(sys.argv) > 1 and sys.argv[1] == "up":
+            ui.errconsole.print(
+                ui.Text(
+                    "  A box may still be starting and using quota: "
+                    "kdev up connects to it, kdev down stops it.",
+                    style="kdev.muted",
+                )
+            )
         sys.exit(130)
+    except BrokenPipeError:
+        # `kdev logs | head -1`: the reader left, which is not a failure.
+        import os
+
+        with contextlib.suppress(OSError):
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        sys.exit(0)
     except typer.Abort:
         ui.errconsole.print(ui.Text("\n  interrupted", style="kdev.muted"))
         sys.exit(130)
     except typer.TyperException as e:
         # Usage mistakes -- a bad option, a missing argument -- in the
-        # parser's own words, which are good, plus where to look.
-        show = getattr(e, "show", None)
-        if callable(show):
-            show()
-        else:
-            ui.err(str(e), "kdev --help lists every command and option.")
+        # parser's own words, which are good (including "Did you mean"), in
+        # kdev's voice, with the help for the command that was being typed.
+        ctx = getattr(e, "ctx", None)
+        where = ctx.command_path if ctx is not None else "kdev"
+        message = e.format_message() if hasattr(e, "format_message") else str(e)
+        ui.err(_quote_commands(message), f"See `{where} --help`")
         sys.exit(getattr(e, "exit_code", 2))
     except typer.Exit as e:
         sys.exit(e.exit_code)

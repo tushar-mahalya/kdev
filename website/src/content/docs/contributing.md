@@ -61,6 +61,9 @@ When yours touches the box, the tunnel or the restore, try it for real:
 
 ## How the code is laid out
 
+The full picture, with diagrams, is in
+[docs/ARCHITECTURE.md](https://github.com/tushar-mahalya/kdev/blob/main/docs/ARCHITECTURE.md).
+
 | layer | rule |
 |---|---|
 | `commands/` | parse arguments, call logic, render with `ui`; no API calls of their own beyond reads |

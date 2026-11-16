@@ -7,6 +7,7 @@ import shlex
 import socket
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Annotated, NoReturn
 
@@ -26,7 +27,7 @@ from .. import (
     ui,
 )
 from .. import notebook as nb
-from ..errors import KdevError
+from ..errors import KdevError, did_you_mean
 from ._common import cap_for, context, load_ready, need_notebook
 
 OPEN_CHOICES = ("code", "shell", "none")
@@ -204,6 +205,7 @@ def up(
             if not winner:
                 raise
             joined = True
+            board.record = False
             board.note(f"Kaggle rejected our submission; joining {winner}")
         else:
             board.note(f"version {resp.get('versionNumber')}")
@@ -227,6 +229,7 @@ def up(
                 seen.clear()
                 host = session.await_ready(prof.creds, target, board, seen=seen, version=winner)
         if joined:
+            board.record = False
             board.note(f"using the session another machine started: {winner}")
         if host:
             board.note("waiting for concurrent starts to stop…")
@@ -308,7 +311,17 @@ def up(
 
     ui.blank()
     files = f"{restored.get('done', 0)} restored" if restored.get("total") else ""
-    ui.ready_card(cfg.ssh_host_alias, host, hours, label, name, note=files)
+    own = persistence.box_state(cfg.ssh_host_alias)
+    ui.ready_card(
+        cfg.ssh_host_alias,
+        host,
+        hours,
+        label,
+        name,
+        note=files,
+        started=ui.epoch(own.get("started")),
+        ends=ui.epoch(own.get("ends")),
+    )
     _open(cfg.ssh_host_alias, open_with, interactive)
 
 
@@ -328,13 +341,16 @@ def _box_spec(
         else:
             gpu = "t4"
     if gpu not in api.SHAPES:
-        raise KdevError(f"--gpu must be one of: {', '.join(api.SHAPES)}.")
+        raise KdevError(
+            f"No accelerator called `{gpu}`.{did_you_mean(gpu, api.SHAPES)}",
+            f"--gpu takes one of: {', '.join(api.SHAPES)}",
+        )
     cap = cap_for(gpu)
     if hours is None:
         if cfg.default_hours:
             hours = cfg.default_hours
         elif interactive:
-            hours, hours_picked = ui.pick_hours(gpu, cap), True
+            hours, hours_picked = ui.pick_hours(gpu, _quota_left(cfg, gpu)), True
         else:
             hours = 9.0
     if not hours or hours <= 0:
@@ -343,6 +359,18 @@ def _box_spec(
         ui.warn(f"Kaggle stops {ui.gpu_label(gpu)} sessions at {cap:g}h; using {cap:g}h")
         hours = cap
     return gpu, float(hours), gpu_picked, hours_picked
+
+
+def _quota_left(cfg: config.Config, gpu: str) -> float | None:
+    """The active account's hours left of the accelerator, or None if it
+    cannot be read now: the question is asked either way."""
+    if gpu == "none" or not cfg.active:
+        return None
+    with ui.spinner("reading quota…"):
+        row = quota.row(cfg, cfg.active)
+    if row.error:
+        return None
+    return (row.tpu_left if gpu == "tpu" else row.gpu_left) / 3600
 
 
 def _cloudflared(interactive: bool):
@@ -372,18 +400,24 @@ def _stop_and_wait(
     with ui.spinner("stopping the running box and waiting for it to save…"):
         stopped = False
         if session.reachable(cfg.ssh_host_alias):
-            r = subprocess.run(
-                [
-                    "ssh",
-                    "-T",
-                    "-o",
-                    "BatchMode=yes",
-                    cfg.ssh_host_alias,
-                    "touch /kaggle/working/.kdev-stop",
-                ],
-                capture_output=True,
-            )
-            stopped = r.returncode == 0
+            try:
+                r = subprocess.run(
+                    [
+                        "ssh",
+                        "-T",
+                        "-o",
+                        "BatchMode=yes",
+                        "-o",
+                        "ConnectTimeout=15",
+                        cfg.ssh_host_alias,
+                        "touch /kaggle/working/.kdev-stop",
+                    ],
+                    capture_output=True,
+                    timeout=60,
+                )
+                stopped = r.returncode == 0
+            except (subprocess.SubprocessError, OSError):
+                stopped = False
         if not stopped:
             sid, runner = session.live_session_id(creds, target, version=version)
             if not sid or not session.cancel_as_owner(cfg, int(sid), runner):
@@ -439,7 +473,15 @@ def _connect(
         cfg, prof.creds, target, hours, gpu, account, version=version
     )
     ui.blank()
-    ui.ready_card(cfg.ssh_host_alias, host, hours, label, account)
+    ui.ready_card(
+        cfg.ssh_host_alias,
+        host,
+        hours,
+        label,
+        account,
+        started=ui.epoch(state.get("started")),
+        ends=ui.epoch(state.get("ends")),
+    )
     _open(cfg.ssh_host_alias, open_with, interactive)
 
 
@@ -703,6 +745,13 @@ def forward(
 # --- status -------------------------------------------------------------------
 
 
+def _probe_box(alias: str) -> tuple[bool, dict]:
+    """(reachable, the box's own state), in one ssh round trip when it answers."""
+    if not session.reachable(alias):
+        return False, {}
+    return True, persistence.box_state(alias)
+
+
 def _run_status_label(status: object) -> str:
     value = str(status)
     return {
@@ -726,16 +775,24 @@ def status(
     target = need_notebook(cfg)
     creds = cfg.profile(account).creds
     with ui.spinner("checking…"):
-        version = ""
-        try:
-            version, state = session.current_status(creds, target)
-        except api.KaggleError as e:
-            state = {"status": "UNKNOWN", "failureMessage": str(e)}
-        reachable = session.reachable(cfg.ssh_host_alias)
-        box = persistence.box_state(cfg.ssh_host_alias) if reachable else {}
+        # Kaggle's view and ssh's are independent: ask both at once. A
+        # successful read of the box's state is itself proof it is reachable.
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            kaggle = pool.submit(session.current_status, creds, target)
+            probe = pool.submit(_probe_box, cfg.ssh_host_alias)
+            version = ""
+            try:
+                version, state = kaggle.result()
+            except (api.KaggleError, KdevError) as e:
+                state = {"status": "UNKNOWN", "failureMessage": str(e)}
+            reachable, box = probe.result()
         running = state.get("status") in api.LIVE_STATES
+        # Only a RUNNING box that stopped answering might be stopping; a
+        # queued or booting one is simply not up yet.
         saving = state.get("status") == api.SAVING or (
-            running and not reachable and session.stopping(creds, target, version=version)
+            state.get("status") == "RUNNING"
+            and not reachable
+            and session.stopping(creds, target, version=version)
         )
     info = {
         "notebook": target,
@@ -753,6 +810,8 @@ def status(
     }
     if as_json:
         ui.emit_json(info)
+        if info["status"] == "UNKNOWN" and info["failure"]:
+            raise typer.Exit(1)  # scripts must be able to tell "unknown" from "stopped"
         return
 
     # Kaggle's words describe the last *run*; the user asked about the *box*.
@@ -768,26 +827,34 @@ def status(
         ("  " + target, "kdev.muted"),
     )
     rows: list[tuple[str, object]] = []
+    up = Text.assemble(("kdev up", "kdev.cmd"), (" brings them back", "kdev.muted"))
     if not running:
         rows.append(("last run", _run_status_label(info["status"])))
         if info["status"] == api.NEVER_RUN:
-            rows.append(("files", "nothing saved yet; `kdev up` starts it"))
-        else:
-            rows.append(("files", "saved in the notebook; `kdev up` puts them back"))
+            rows.append(("files", Text.assemble(("nothing saved yet  ", ""), up)))
+        elif not saving:
+            rows.append(("files", Text.assemble(("saved in the notebook  ", ""), up)))
     if box.get("run_by"):
         rows.append(("started by", box["run_by"]))
-    if box.get("ends"):
-        left = max(0, int(box["ends"]) - int(time.time()))
-        ends = time.strftime("%H:%M", time.localtime(int(box["ends"])))
-        rows.append(("ends", f"{ends}  ({ui.fmt_hours(left)} left)"))
+    ends, started = ui.epoch(box.get("ends")), ui.epoch(box.get("started"))
+    if ends:
+        rows.append(("time", ui.countdown(started or ends - 12 * 3600, ends)))
     if saving:
-        rows.append(("files", "being saved; `kdev up` waits for them"))
+        rows.append(
+            (
+                "files",
+                Text.assemble(
+                    ("being saved  ", "kdev.warn"), ("kdev up waits for them", "kdev.muted")
+                ),
+            )
+        )
     elif running:
-        reach = Text(
-            f"{cfg.ssh_host_alias} {ui.g('arrow')} {cfg.tunnel_hostname or 'quick tunnel'}  "
+        reach = Text.assemble(
+            (cfg.ssh_host_alias, "kdev.cmd"),
+            (f" {ui.g('arrow')} {cfg.tunnel_hostname or 'quick tunnel'}  ", "kdev.muted"),
         )
         reach.append(
-            "reachable" if reachable else "not reachable yet",
+            f"{ui.g('ok')} reachable" if reachable else "not reachable yet",
             style="kdev.ok" if reachable else "kdev.warn",
         )
         rows.append(("ssh", reach))
@@ -795,10 +862,10 @@ def status(
         layers = " + ".join(box.get("layers") or []) or "nothing saved yet"
         rows.append(
             (
-                "files",
-                Text(f"restored from {layers}", style="kdev.ok")
+                "restored",
+                Text(f"{ui.g('ok')} from {layers}", style="kdev.ok")
                 if box.get("restored")
-                else Text("restore not finished: kdev restore", style="kdev.warn"),
+                else Text.assemble(("not finished  ", "kdev.warn"), ("kdev restore", "kdev.cmd")),
             )
         )
     if box.get("notebook") and box["notebook"] != target:
@@ -809,7 +876,9 @@ def status(
         rows.append(("error", Text(info["failure"], style="kdev.err")))
     ui.card(title, rows, tone="ok" if running else "muted")
     if running and not reachable and not saving:
-        ui.hint("Running but not reachable yet: give it a minute, or `kdev logs` to see why.")
+        ui.next_steps([("kdev logs", "see what the box is doing; ssh can take a minute")])
+    elif running:
+        ui.next_steps([("kdev ssh", "open a shell"), ("kdev down", "stop it; files are saved")])
 
 
 # --- history ------------------------------------------------------------------
@@ -893,7 +962,9 @@ def history(
 
 def logs(
     account: str = typer.Option("", "--account", "-a", help="Read as this account."),
-    lines: int = typer.Option(0, "--lines", "-n", help="Stop after N lines (default: follow)."),
+    lines: int = typer.Option(
+        0, "--lines", "-n", min=0, help="Stop after N lines (default: follow)."
+    ),
     everything: bool = typer.Option(False, "--all", help="Include heartbeat and debugger lines."),
 ) -> None:
     """Stream the session's log."""
@@ -901,7 +972,16 @@ def logs(
     target = need_notebook(cfg)
     shown = 0
     creds = cfg.profile(account).creds
-    version, _ = session.current_status(creds, target)
+    version, state = session.current_status(creds, target)
+    if state.get("status") not in api.LIVE_STATES:
+        # On stderr: the log itself stays clean for `kdev logs > file`.
+        ui.errconsole.print(
+            Text(
+                f"  no box is running; this is the log of {version or 'the last run'} "
+                f"({_run_status_label(state.get('status', '?'))})",
+                style="kdev.muted",
+            )
+        )
     for line in api.stream_logs(creds, target, version=version):
         text = line.rstrip()
         if not everything and text.startswith(("KDEV_ALIVE", "0.00s - ")):
@@ -994,7 +1074,11 @@ def restore_cmd(
 # --- backup -------------------------------------------------------------------
 
 
-def backup() -> None:
+def backup(
+    force: bool = typer.Option(
+        False, "--force", help="Back up even a box that never finished restoring."
+    ),
+) -> None:
     """Copy the running box's /kaggle/working to this machine.
 
     Optional: Kaggle keeps your files anyway. This is a local copy you can
@@ -1003,6 +1087,20 @@ def backup() -> None:
     cfg = config.load()
     ui.header("backup", terminal_only=True)
     session.ssh_ready(cfg)
+    # The copy mirrors the box, deletions included: a box that never got its
+    # files back would mirror as nearly empty and wipe the last good backup.
+    with ui.spinner("reading the box…"):
+        state = persistence.box_state(cfg.ssh_host_alias)
+    if not state:
+        raise KdevError("Could not reach the box over ssh.", "Is it up? kdev status")
+    if not state.get("restored") and persistence.contents():
+        if not force:
+            raise KdevError(
+                "This box never finished restoring your files; a backup now would "
+                "replace this machine's copy with a partial one.",
+                "Finish it first: kdev restore   or overwrite anyway: kdev backup --force",
+            )
+        ui.warn("the box never finished restoring; overwriting the local backup anyway")
     with ui.spinner("copying the box to this machine…"):
         ok, err = persistence.pull(cfg.ssh_host_alias)
     if not ok:

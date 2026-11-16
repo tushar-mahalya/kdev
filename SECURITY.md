@@ -40,7 +40,7 @@ Sigstore-signed build provenance for its wheel and sdist. To check that a file
 was built from this repository by its release workflow:
 
 ```bash
-gh attestation verify kdev_cli-0.1.4-py3-none-any.whl --repo tushar-mahalya/kdev
+gh attestation verify kdev_cli-0.2.0-py3-none-any.whl --repo tushar-mahalya/kdev
 ```
 
 The same signed provenance is attached to each GitHub release as

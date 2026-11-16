@@ -5,7 +5,7 @@ export const site = {
     'kdev is a free, open-source CLI that turns a Kaggle notebook into a remote dev box: SSH or VS Code Remote-SSH into free T4, P100 or TPU machines, and get your files back on the next session, from any account or machine.',
   repo: 'https://github.com/tushar-mahalya/kdev',
   pypi: 'https://pypi.org/project/kdev-cli/',
-  version: '0.1.4',
+  version: '0.2.0',
   install: 'uv tool install kdev-cli',
 };
 

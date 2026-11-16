@@ -69,7 +69,7 @@ def current_status(creds: api.Creds, slug: str) -> tuple[str, dict]:
         elif candidate.get("status") == api.SAVING:
             saving = label, candidate
         elif candidate.get("status") in ENDED_STATES:
-            files = persistence.version_files(creds, slug, label) or {}
+            files = persistence.version_meta(creds, slug, label) or {}
             saved = persistence._state(files)
             if persistence.STATE in files and saved is None:
                 raise KdevError(f"Could not read the saved startup state of {label}.")
@@ -236,15 +236,33 @@ def cancel_created(creds: api.Creds, slug: str, version: str, timeout: int = REA
     raise KdevError(f"Duplicate {version} has not finished stopping.", hint)
 
 
-def ssh_ready(cfg: config.Config) -> None:
+def ssh_ready(cfg: config.Config, *, host_changed: bool = False) -> None:
     """Make `ssh <alias>` -- and VS Code's host of that name -- work here.
 
     A named tunnel's hostname never changes, so the block needs no box to look
     at: a machine that did not start the running box, or that ran `kdev down`
     on the last one, can still reach the next.
+
+    An existing block keeps its hostname unless `host_changed` says the
+    configured one was just changed: a box another machine started on a
+    quick tunnel is reachable only at the hostname the block already has.
     """
-    if cfg.tunnel_hostname and cfg.ssh_host_alias and not sshcfg.has_block():
-        sshcfg.write(cfg.ssh_host_alias, cfg.tunnel_hostname, cloudflared_path=cloudflared.find())
+    if not cfg.ssh_host_alias:
+        return
+    block = sshcfg.current()
+    if block is None:
+        if cfg.tunnel_hostname:
+            sshcfg.write(
+                cfg.ssh_host_alias, cfg.tunnel_hostname, cloudflared_path=cloudflared.find()
+            )
+        return
+    alias, host = block
+    # The alias was renamed since the block was written (`kdev config set
+    # ssh-alias`): `ssh <alias>` would find no such host. Only the name moves;
+    # the hostname may be a quick tunnel's, which only the box knows.
+    want = (host_changed and cfg.tunnel_hostname) or host
+    if alias != cfg.ssh_host_alias or want != host:
+        sshcfg.write(cfg.ssh_host_alias, want, cloudflared_path=cloudflared.find())
 
 
 def box_gone(cfg: config.Config) -> None:

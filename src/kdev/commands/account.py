@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import typer
 
 from .. import auth, config, quota, ui, wizard
@@ -39,23 +41,30 @@ def main(
                     "gpu_seconds_left": r.gpu_left,
                     "gpu_seconds_total": r.gpu_total,
                     "tpu_seconds_left": r.tpu_left,
+                    "tpu_seconds_total": r.tpu_total,
+                    "quota_resets": (
+                        datetime.fromtimestamp(r.resets, UTC).isoformat().replace("+00:00", "Z")
+                        if r.resets
+                        else None
+                    ),
                     "error": r.error or None,
                 }
                 for r in rows
             ]
         )
         return
-    ui.section("Accounts", f"{len(rows)} connected")
     ui.console.print(ui.accounts_table(rows))
     total = sum(r.gpu_left for r in rows if not r.error)
     ui.blank()
+    refill = quota.resets(rows)
     ui.hint(
         f"{ui.fmt_hours(total)} of GPU left across {len(rows)} account(s)  "
-        f"{ui.g('bullet')}  {ui.g('live')} runs the next box"
+        + (f"{ui.g('bullet')}  refills {ui.fmt_when(refill)}  " if refill else "")
+        + f"{ui.g('bullet')}  {ui.g('live')} runs the next box"
     )
-    broken = [r.name for r in rows if r.error]
+    # Only a sign-in problem is fixed by signing in again; offline is not.
+    broken = [r.name for r in rows if r.error and r.error != quota.OFFLINE]
     if broken:
-        ui.blank()
         ui.next_steps([(f"kdev account add {n}", "sign it in again") for n in broken])
 
 
@@ -80,7 +89,6 @@ def add(name: str = typer.Argument("", help="A short name for the account, e.g. 
         f"added {name} ({cfg.profiles[name].username})"
         + ("; it runs the next box" if cfg.active == name else "")
     )
-    ui.blank()
     ui.next_steps([("kdev account", "see every account's quota")])
 
 
@@ -105,6 +113,8 @@ def _refresh(cfg: config.Config, name: str) -> None:
             f"Switch Kaggle accounts in the browser, then: kdev account add {name}",
         )
     auth.creds_path(scratch).replace(auth.creds_path(name))
+    auth.invalidate(name)
+    auth.invalidate(scratch)
     ui.ok(f"signed {name} in again")
 
 
@@ -120,7 +130,7 @@ def use(name: str = typer.Argument("", help="The account to make active.")) -> N
             raise KdevError("Name the account.", "kdev account use <name>")
         with ui.spinner("reading quota…"):
             rows = quota.rows(cfg)
-        name = ui.pick_profile(rows, 0)
+        name = ui.pick_profile(rows, 0, question="Which account runs the next box?")
     cfg.profile(name)
     cfg.active = name
     config.save(cfg)

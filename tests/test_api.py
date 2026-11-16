@@ -183,3 +183,93 @@ def test_a_notebook_that_has_never_run_is_a_status_not_an_error(monkeypatch):
     monkeypatch.setattr(api, "call", denied)
     with pytest.raises(api.KaggleError):
         api.session_status(api.Creds("u"), "a/b")  # other failures still surface
+
+
+def test_a_prefix_listing_stops_paging_once_past_the_prefix(monkeypatch):
+    pages = {
+        None: {
+            "files": [{"fileName": n, "url": "u"} for n in (".kdev/a", ".kdev/state.json", "b")],
+            "nextPageToken": "p2",
+        },
+        "p2": {"files": [{"fileName": "c", "url": "u"}]},
+    }
+    seen = []
+
+    def call(creds, method, payload, **kw):
+        seen.append(payload.get("pageToken"))
+        return pages[payload.get("pageToken")]
+
+    monkeypatch.setattr(api, "call", call)
+    names = [f["name"] for f in api.session_output(api.Creds("u"), "a/b", "v1", prefix=".kdev/")]
+    assert seen == [None] and ".kdev/state.json" in names
+
+
+def test_a_prefix_listing_keeps_paging_when_the_prefix_may_continue(monkeypatch):
+    pages = {
+        None: {"files": [{"fileName": ".kdev/a", "url": "u"}], "nextPageToken": "p2"},
+        "p2": {
+            "files": [{"fileName": ".kdev/state.json", "url": "u"}, {"fileName": "b", "url": "u"}]
+        },
+    }
+    monkeypatch.setattr(api, "call", lambda c, m, p, **kw: pages[p.get("pageToken")])
+    names = [f["name"] for f in api.session_output(api.Creds("u"), "a/b", "v1", prefix=".kdev/")]
+    assert ".kdev/state.json" in names
+
+
+def test_an_unsorted_page_is_never_trusted_to_end_the_prefix(monkeypatch):
+    pages = {
+        None: {
+            "files": [{"fileName": n, "url": "u"} for n in ("z", ".kdev/a")],
+            "nextPageToken": "p2",
+        },
+        "p2": {"files": [{"fileName": ".kdev/state.json", "url": "u"}]},
+    }
+    monkeypatch.setattr(api, "call", lambda c, m, p, **kw: pages[p.get("pageToken")])
+    names = [f["name"] for f in api.session_output(api.Creds("u"), "a/b", "v1", prefix=".kdev/")]
+    assert ".kdev/state.json" in names
+
+
+def test_rate_limiting_is_waited_out_with_retry_after(monkeypatch):
+    import httpx
+
+    answers = iter(
+        [httpx.Response(429, headers={"retry-after": "2"})] * 3
+        + [httpx.Response(200, json={"ok": 1})]
+    )
+    slept = []
+    monkeypatch.setattr(api.httpx, "post", lambda *a, **kw: next(answers))
+    monkeypatch.setattr(api.time, "sleep", slept.append)
+    assert api.call(api.Creds("u"), "GetKernel", {}) == {"ok": 1}
+    assert slept == [2.0, 2.0, 2.0]
+
+
+def test_a_call_that_must_not_repeat_is_never_retried_even_when_limited(monkeypatch):
+    import httpx
+
+    calls = []
+    monkeypatch.setattr(api.httpx, "post", lambda *a, **kw: calls.append(1) or httpx.Response(429))
+    with pytest.raises(api.KaggleError):
+        api.call(api.Creds("u"), "SaveKernel", {}, attempts=1)
+    assert len(calls) == 1
+
+
+def test_a_prefix_read_falls_back_to_full_pages_when_the_prefix_sorts_late(monkeypatch):
+    """A `.git/` at the root sorts before `.kdev/`: fifty names at a time
+    would take dozens of calls, so the read restarts at the full page size."""
+    names = [f".git/objects/{i:04d}" for i in range(900)] + [".kdev/state.json", "z.py"]
+    calls = []
+
+    def call(creds, method, payload, **kw):
+        size, start = payload["pageSize"], int(payload.get("pageToken") or 0)
+        calls.append(size)
+        page = names[start : start + size]
+        nxt = start + size
+        return {
+            "files": [{"fileName": n, "url": "u"} for n in page],
+            "nextPageToken": str(nxt) if nxt < len(names) else "",
+        }
+
+    monkeypatch.setattr(api, "call", call)
+    got = [f["name"] for f in api.session_output(api.Creds("u"), "a/b", "v1", prefix=".kdev/")]
+    assert ".kdev/state.json" in got
+    assert calls == [api.PREFIX_PAGE, api.OUTPUT_PAGE, api.OUTPUT_PAGE]

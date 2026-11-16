@@ -87,9 +87,11 @@ def _versions(monkeypatch, table):
     """table: label -> (files dict or None, state dict or None)."""
     from kdev import persistence as w
 
-    monkeypatch.setattr(
-        w, "version_files", lambda c, nb, label: (table.get(label) or (None, None))[0]
-    )
+    def listed(c, nb, label):
+        return (table.get(label) or (None, None))[0]
+
+    monkeypatch.setattr(w, "version_files", listed)
+    monkeypatch.setattr(w, "version_meta", listed)
     monkeypatch.setattr(
         w, "_state", lambda files: next((st for f, st in table.values() if f is files), None)
     )
@@ -101,9 +103,10 @@ def test_session_history_caps_scanned_versions_independently_of_limit(monkeypatc
 
     scanned = []
     monkeypatch.setattr(w, "version_files", lambda c, nb, label: scanned.append(label) or None)
+    monkeypatch.setattr(api, "session_status", lambda c, nb, label: {"status": "COMPLETE"})
 
     assert w.session_history(api.Creds("u"), "a/b", latest=100, limit=2) == []
-    assert scanned == [f"v{number}" for number in range(100, 100 - w.WALK_BACK, -1)]
+    assert sorted(scanned) == sorted(f"v{number}" for number in range(100, 100 - w.WALK_BACK, -1))
 
 
 def test_a_complete_saved_version_is_used_on_its_own(monkeypatch):
@@ -215,7 +218,7 @@ def test_unreadable_saved_state_fails_before_workspace_history_is_guessed(monkey
 def test_failed_output_lookup_is_not_treated_as_empty_history(monkeypatch, status):
     from kdev import persistence as w
 
-    def failed(*a):
+    def failed(*a, **kw):
         raise api.KaggleError("output lookup failed", status)
 
     monkeypatch.setattr(api, "session_output", failed)
@@ -226,7 +229,7 @@ def test_failed_output_lookup_is_not_treated_as_empty_history(monkeypatch, statu
 def test_absent_output_version_can_still_be_skipped(monkeypatch):
     from kdev import persistence as w
 
-    def absent(*a):
+    def absent(*a, **kw):
         raise api.KaggleError("no output", 404)
 
     monkeypatch.setattr(api, "session_output", absent)
@@ -426,3 +429,134 @@ def test_stacked_layers_only_fill_in_what_the_newest_never_got(monkeypatch):
     monkeypatch.setattr(w, "_fetched", lambda files: {"kept.py", "deleted.py"})
     plan = w.build_plan(api.Creds("u"), "a/b", ["v1", "v2"])
     assert sorted(plan["layers"][0]["files"]) == [".kdev/meta.json", "failed.bin", "never.py"]
+
+
+def test_history_can_show_more_than_the_restore_walk_back(monkeypatch):
+    """`kdev history --limit 50` was silently capped at 10 scanned versions."""
+    from kdev import persistence as w
+
+    monkeypatch.setattr(w, "version_files", lambda c, nb, label: {"a.py": "u"})
+    monkeypatch.setattr(w, "_state", lambda files: {})
+    monkeypatch.setattr(api, "session_status", lambda c, nb, label: {"status": "COMPLETE"})
+    rows = w.session_history(api.Creds("u"), "a/b", latest=200, limit=50)
+    assert [r["version"] for r in rows] == [f"v{n}" for n in range(200, 150, -1)]
+
+
+def test_history_looks_past_empty_versions_but_not_forever(monkeypatch):
+    from kdev import persistence as w
+
+    scanned = []
+
+    def listed(c, nb, label):
+        scanned.append(label)
+        return {"a.py": "u"} if int(label[1:]) % 2 else None  # every other one empty
+
+    monkeypatch.setattr(w, "version_files", listed)
+    monkeypatch.setattr(w, "_state", lambda files: {})
+    monkeypatch.setattr(api, "session_status", lambda c, nb, label: {"status": "COMPLETE"})
+    rows = w.session_history(api.Creds("u"), "a/b", latest=101, limit=20)
+    assert len(rows) == 20 and rows[0]["version"] == "v101"
+    assert len(scanned) <= 40, "the window is bounded by twice the limit"
+
+
+def test_history_stops_reading_once_it_has_enough(monkeypatch):
+    """Each version is a full listing: one batch that fills the limit is enough."""
+    from kdev import persistence as w
+
+    scanned = []
+    monkeypatch.setattr(
+        w, "version_files", lambda c, nb, label: scanned.append(label) or {"a": "u"}
+    )
+    monkeypatch.setattr(w, "_state", lambda files: {})
+    monkeypatch.setattr(api, "session_status", lambda c, nb, label: {"status": "COMPLETE"})
+    assert len(w.session_history(api.Creds("u"), "a/b", latest=100, limit=10)) == 10
+    assert len(scanned) == w.WALK_BACK
+
+
+def test_a_hung_rsync_is_a_failed_sync_not_a_crash(monkeypatch):
+    import subprocess
+
+    from kdev import persistence as w
+
+    seen = {}
+
+    def hang(cmd, **kw):
+        seen.update(kw)
+        raise subprocess.TimeoutExpired(cmd, kw.get("timeout") or 0)
+
+    monkeypatch.setattr(w.subprocess, "run", hang)
+    r = w._rsync("a/", "b/")
+    assert seen["timeout"] == w.RSYNC_TIMEOUT
+    assert r.returncode != 0 and "timed out" in r.stderr
+
+
+def test_pull_reports_a_hung_rsync(monkeypatch, tmp_path):
+    import subprocess
+
+    from kdev import persistence as w
+
+    monkeypatch.setattr(w, "mirror_dir", lambda: tmp_path)
+
+    def hang(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd, kw.get("timeout") or 0)
+
+    monkeypatch.setattr(w.subprocess, "run", hang)
+    ok, err = w.pull("kaggle")
+    assert not ok and "timed out" in err
+
+
+def test_wait_reachable_never_blocks_on_one_stalled_ssh(monkeypatch):
+    """ConnectTimeout covers TCP only; a ProxyCommand that stalls hung forever."""
+    import subprocess
+
+    from kdev import persistence as w
+
+    clock = [0.0]
+    monkeypatch.setattr(w.time, "time", lambda: clock[0])
+    monkeypatch.setattr(w.time, "sleep", lambda s: clock.__setitem__(0, clock[0] + s))
+    calls = []
+
+    def ssh(cmd, **kw):
+        calls.append(kw.get("timeout"))
+        clock[0] += kw["timeout"]
+        if len(calls) < 3:
+            raise subprocess.TimeoutExpired(cmd, kw["timeout"])
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(w.subprocess, "run", ssh)
+    assert w.wait_reachable("kaggle", timeout=180)
+    assert calls and all(t for t in calls)
+
+
+def test_history_remembers_ended_versions_and_rereads_live_ones(monkeypatch):
+    from kdev import persistence as w
+
+    listed = []
+    statuses = {"v2": "COMPLETE", "v1": "COMPLETE", "v3": "RUNNING"}
+    monkeypatch.setattr(
+        w, "version_files", lambda c, nb, label: listed.append(label) or {"a.py": "u"}
+    )
+    monkeypatch.setattr(w, "_state", lambda files: {"run_by": "alice"})
+    monkeypatch.setattr(api, "session_status", lambda c, nb, label: {"status": statuses[label]})
+
+    first = w.session_history(api.Creds("u"), "a/b", latest=3, limit=3)
+    listed.clear()
+    again = w.session_history(api.Creds("u"), "a/b", latest=3, limit=3)
+    assert again == first
+    assert listed == ["v3"], "only the version still running is read again"
+
+
+def test_a_version_that_ends_while_being_listed_is_not_cached_as_final(monkeypatch):
+    from kdev import persistence as w
+
+    seen = {"status": "CANCEL_REQUESTED"}
+
+    def listing(c, nb, label):
+        seen["status"] = "COMPLETE"  # it finishes saving mid-listing
+        return {"a.py": "u"}
+
+    monkeypatch.setattr(w, "version_files", listing)
+    monkeypatch.setattr(w, "_state", lambda files: {})
+    monkeypatch.setattr(api, "session_status", lambda c, nb, label: dict(seen))
+    w.session_history(api.Creds("u"), "a/b", latest=1, limit=1)
+    assert "a/b@v1" not in w._history_cache()

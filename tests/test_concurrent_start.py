@@ -38,7 +38,7 @@ def runs(monkeypatch, clock):
 
     monkeypatch.setattr(api, "session_status", status)
     monkeypatch.setattr(api, "get_kernel", lambda *a: {"currentVersionNumber": 20})
-    monkeypatch.setattr(persistence, "version_files", lambda *a: {})
+    monkeypatch.setattr(persistence, "version_meta", lambda *a: {})
     return states, reads
 
 
@@ -201,7 +201,7 @@ def test_inconsistent_metadata_cannot_make_a_shared_tunnel_ready(runs, monkeypat
 
 
 def test_unreadable_startup_state_cannot_hide_an_older_winner(runs, monkeypatch):
-    monkeypatch.setattr(persistence, "version_files", lambda *a: {persistence.STATE: "bad-url"})
+    monkeypatch.setattr(persistence, "version_meta", lambda *a: {persistence.STATE: "bad-url"})
     monkeypatch.setattr(persistence, "_state", lambda f: None)
     with pytest.raises(KdevError, match="saved startup state"):
         session.current_status(CREDS, SLUG)
@@ -289,7 +289,7 @@ def test_pending_save_is_not_preferred_over_a_live_winner(runs):
 
 def test_unconfirmed_discovery_limit_requires_inspection(runs, monkeypatch):
     monkeypatch.setattr(api, "get_kernel", lambda *a: {"currentVersionNumber": 1000})
-    monkeypatch.setattr(persistence, "version_files", lambda *a: {"state": "url"})
+    monkeypatch.setattr(persistence, "version_meta", lambda *a: {"state": "url"})
     monkeypatch.setattr(persistence, "_state", lambda f: {"startup_confirmed": False})
     with pytest.raises(KdevError, match="Too many unconfirmed"):
         session.current_status(CREDS, SLUG)
@@ -336,7 +336,7 @@ def test_discovery_pins_latest_status_despite_metadata_logical_race(runs):
 def test_confirmed_history_bounds_discovery_without_hiding_winner(runs, monkeypatch):
     states, reads = runs
     states["v17"] = "RUNNING"
-    monkeypatch.setattr(persistence, "version_files", lambda c, s, v: {"state": v})
+    monkeypatch.setattr(persistence, "version_meta", lambda c, s, v: {"state": v})
     monkeypatch.setattr(
         persistence, "_state", lambda files: {"startup_confirmed": files["state"] == "v16"}
     )
@@ -347,7 +347,7 @@ def test_confirmed_history_bounds_discovery_without_hiding_winner(runs, monkeypa
 def test_many_unconfirmed_losers_do_not_hide_winner(runs, monkeypatch):
     states, _ = runs
     states["v1"] = "RUNNING"
-    monkeypatch.setattr(persistence, "version_files", lambda *a: {"state": "url"})
+    monkeypatch.setattr(persistence, "version_meta", lambda *a: {"state": "url"})
     monkeypatch.setattr(persistence, "_state", lambda f: {"startup_confirmed": False})
     assert session.current_status(CREDS, SLUG)[0] == "v1"
 

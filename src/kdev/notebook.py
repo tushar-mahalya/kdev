@@ -11,8 +11,9 @@ accounts.
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 
-from . import api, bootstrap, config, persistence, ui
+from . import api, bootstrap, config, persistence, safety, ui
 from .errors import KdevError
 
 PLACEHOLDER = "# kdev workspace notebook -- source is generated per session.\n"
@@ -49,6 +50,10 @@ def discover(creds: api.Creds) -> list[tuple[str, str]]:
     ]
 
 
+#: Notebooks read at once by `scan`. Small: each is two calls on one account.
+SCAN_WORKERS = 4
+
+
 def scan(creds: api.Creds) -> tuple[list[dict], list[dict]]:
     """Which groups this account is in, and which notebooks each shares.
 
@@ -57,11 +62,20 @@ def scan(creds: api.Creds) -> tuple[list[dict], list[dict]]:
     and the sharing policy on each. A group with no shared notebook is
     therefore invisible, which is why creating the first box asks for a slug.
     """
-    notebooks = []
-    for ref, title in discover(creds):
+
+    def read(found: tuple[str, str]) -> dict:
+        ref, title = found
         kid = api.kernel_id(creds, ref)
         groups = api.policy_groups(api.get_policy(creds, kid)) if kid else []
-        notebooks.append({"ref": ref, "title": title, "id": kid, "groups": groups})
+        return {"ref": ref, "title": title, "id": kid, "groups": groups}
+
+    shared = discover(creds)
+    # Two calls per notebook, none depending on another: read them at once.
+    # `map` keeps the listing's order.
+    notebooks: list[dict] = []
+    if shared:
+        with ThreadPoolExecutor(max_workers=min(SCAN_WORKERS, len(shared))) as pool:
+            notebooks = list(pool.map(read, shared))
     by_slug: dict[str, dict] = {}
     for nb in notebooks:
         for g in nb["groups"]:
@@ -89,21 +103,38 @@ def describe(cfg: config.Config, creds: api.Creds) -> dict:
         cfg.notebook_id = cfg.notebook_id or int(meta.get("id") or 0)
     except (api.KaggleError, TypeError, ValueError) as e:
         out["errors"].append(f"notebook: {e}")
-    if cfg.group_slug and cfg.notebook_id:
-        try:
-            out["role"] = api.group_role(api.get_policy(creds, cfg.notebook_id), cfg.group_slug)
-        except api.KaggleError as e:
-            out["errors"].append(f"sharing: {e}")
-        try:
-            out["members"] = [
-                m.get("username", "?") for m in api.group_members(creds, cfg.group_slug)
-            ]
-        except api.KaggleError as e:
-            out["errors"].append(f"members: {e}")
-    # The newest version with files, not the newest version: while a box runs
-    # its own has none yet, and "0 files" reads as everything being lost.
-    out["saved"], files = persistence.newest_saved(creds, cfg.notebook, out["version"])
-    out["files"] = len(files) if out["saved"] else None
+    sharing = bool(cfg.group_slug and cfg.notebook_id)
+    group, kid = cfg.group_slug, cfg.notebook_id
+
+    def role() -> str:
+        return api.group_role(api.get_policy(creds, kid), group)
+
+    def members() -> list[str]:
+        return [m.get("username", "?") for m in api.group_members(creds, group)]
+
+    def saved() -> tuple[str, int | None]:
+        # The newest version with files, not the newest version: while a box
+        # runs its own has none yet, and "0 files" reads as everything lost.
+        label, _ = persistence.newest_saved(creds, cfg.notebook, out["version"])
+        return label, (persistence.file_count(creds, cfg.notebook, label) if label else None)
+
+    # Independent reads, each one or more round trips: run them together.
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        role_f = pool.submit(role) if sharing else None
+        members_f = pool.submit(members) if sharing else None
+        saved_f = pool.submit(saved)
+        # Errors are reported in a fixed order, whichever call failed first.
+        if role_f is not None:
+            try:
+                out["role"] = role_f.result()
+            except api.KaggleError as e:
+                out["errors"].append(f"sharing: {e}")
+        if members_f is not None:
+            try:
+                out["members"] = members_f.result()
+            except api.KaggleError as e:
+                out["errors"].append(f"members: {e}")
+        out["saved"], out["files"] = saved_f.result()
     return out
 
 
@@ -150,7 +181,11 @@ def create(creds: api.Creds, owner: str, title: str) -> tuple[str, int]:
         raise KdevError(f"{title!r} makes an empty notebook name.", "Use letters or digits.")
     try:
         existing = api.get_kernel(creds, slug)
-    except api.KaggleError:
+    except api.KaggleError as e:
+        # Only "not there" clears the way. A failed read is not an empty
+        # name: guessing wrong here replaces a real notebook's source.
+        if not safety.missing(e, creds, slug):
+            raise
         existing = {}
     if existing.get("id"):
         raise KdevError(
@@ -201,8 +236,6 @@ def use(cfg: config.Config, creds: api.Creds, ref: str) -> None:
 
 def join(cfg: config.Config, creds: api.Creds, owner: str) -> bool:
     """Interactive: pick the group, then a notebook in it or a new one."""
-    from . import safety
-
     with ui.spinner("reading your groups and notebooks…"):
         groups, _ = scan(creds)
 

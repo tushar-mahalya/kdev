@@ -19,8 +19,11 @@ down, `kdev restore --from-backup` pushes it back up on request.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
@@ -85,6 +88,22 @@ def version_files(creds: api.Creds, notebook: str, label: str) -> dict[str, str]
     return {f["name"]: f["url"] for f in files}
 
 
+def version_meta(creds: api.Creds, notebook: str, label: str) -> dict[str, str] | None:
+    """Like `version_files`, but only `.kdev/` is guaranteed complete.
+
+    Enough to read a version's saved state and tell whether it holds files,
+    for a fraction of the calls: a 2,400-file workspace lists in five pages
+    of about 2s each, and its `.kdev/` names all sit on the first.
+    """
+    try:
+        files = api.session_output(creds, notebook, label, prefix=".kdev/")
+    except api.KaggleError as e:
+        if e.status == 404:
+            return None
+        raise
+    return {f["name"]: f["url"] for f in files}
+
+
 def _state(files: dict[str, str]) -> dict | None:
     """The .kdev/state.json a version saved, fetched through its own URL."""
     url = files.get(STATE)
@@ -128,7 +147,7 @@ def newest_saved(creds: api.Creds, notebook: str, latest: int) -> tuple[str, dic
     """
     number, remaining, unconfirmed = latest, WALK_BACK, 0
     while number > 0 and remaining > 0:
-        files = version_files(creds, notebook, f"v{number}")
+        files = version_meta(creds, notebook, f"v{number}")
         if files:
             state = _state(files)
             if STATE in files and state is None:
@@ -148,6 +167,44 @@ def newest_saved(creds: api.Creds, notebook: str, latest: int) -> tuple[str, dic
     return "", {}
 
 
+_ENDED = frozenset({"COMPLETE", "ERROR", "CANCEL_ACKNOWLEDGED"})
+_cache_lock = threading.Lock()
+
+
+def _history_cache_path() -> Path:
+    return _config.CONFIG_DIR / "cache" / "history.json"
+
+
+def _history_cache() -> dict:
+    try:
+        data = json.loads(_history_cache_path().read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_history_cache(cache: dict) -> None:
+    path = _history_cache_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(cache, sort_keys=True))
+        tmp.replace(path)
+    except OSError:
+        pass  # only a cache
+
+
+def file_count(creds: api.Creds, notebook: str, label: str) -> int:
+    """How many of your files a saved version holds -- kdev's own `.kdev/`
+    bookkeeping excluded, the same count `kdev history` shows. An ended
+    version's count is remembered, so this is usually free."""
+    hit = _history_cache().get(f"{notebook}@{label}")
+    if isinstance(hit, dict) and hit.get("status") in _ENDED and isinstance(hit.get("files"), int):
+        return hit["files"]
+    files = version_files(creds, notebook, label) or {}
+    return sum(not name.startswith(".kdev/") for name in files)
+
+
 def session_history(creds: api.Creds, notebook: str, latest: int, limit: int = 10) -> list[dict]:
     """Recent saved sessions, newest first.
 
@@ -155,31 +212,60 @@ def session_history(creds: api.Creds, notebook: str, latest: int, limit: int = 1
     metadata comes from the version itself and run status is requested for the
     same version label.
     """
-    rows: list[dict] = []
-    for number in range(latest, max(0, latest - WALK_BACK), -1):
-        if len(rows) >= limit:
-            break
-        label = f"v{number}"
-        files = version_files(creds, notebook, label)
-        if not files:
-            continue
-        state = _state(files) or {}
+
+    cache = _history_cache()
+
+    def read(label: str) -> dict | None:
+        key = f"{notebook}@{label}"
+        hit = cache.get(key)
+        if isinstance(hit, dict) and hit.get("status") in _ENDED:
+            return dict(hit)
+        # Status before the listing: a version still saving when listed may
+        # end a moment later, and its partial file count must not be cached
+        # as final. Only a version that had ended before it was listed is.
         try:
             status = api.session_status(creds, notebook, label)
         except api.KaggleError:
             status = {"status": "UNKNOWN"}
-        rows.append(
-            {
-                "version": label,
-                "run_by": state.get("run_by") or None,
-                "started": state.get("started") or None,
-                "ends": state.get("ends") or None,
-                "status": status.get("status") or "UNKNOWN",
-                "files": sum(not name.startswith(".kdev/") for name in files),
-                "restored": state.get("restored") if "restored" in state else None,
-                "restore_finished": state.get("finished") or None,
-            }
-        )
+        files = version_files(creds, notebook, label)
+        if not files:
+            return None
+        state = _state(files) or {}
+        row = {
+            "version": label,
+            "run_by": state.get("run_by") or None,
+            "started": state.get("started") or None,
+            "ends": state.get("ends") or None,
+            "status": status.get("status") or "UNKNOWN",
+            "files": sum(not name.startswith(".kdev/") for name in files),
+            "restored": state.get("restored") if "restored" in state else None,
+            "restore_finished": state.get("finished") or None,
+        }
+        if row["status"] in _ENDED:
+            # A version that has ended never changes again: remember it.
+            with _cache_lock:
+                cache[key] = row
+        return row
+
+    # Empty versions do not count towards `limit`, so the window must be
+    # wider than it -- but bounded, since each version costs a full listing.
+    window = max(WALK_BACK, limit * 2)
+    labels = [f"v{n}" for n in range(latest, max(0, latest - window), -1)]
+    rows: list[dict] = []
+    # Read a batch at once, newest first in the result: each version is
+    # several seconds of paging, and none depends on another. Later batches
+    # are only read while `limit` is not yet met.
+    batch = max(WALK_BACK, limit)
+    # Four at a time: more finishes no sooner (each version is paged in
+    # order) and trips Kaggle's rate limit.
+    with ThreadPoolExecutor(max_workers=max(1, min(4, len(labels)))) as pool:
+        for start in range(0, len(labels), batch):
+            for row in pool.map(read, labels[start : start + batch]):
+                if row and len(rows) < limit:
+                    rows.append(row)
+            if len(rows) >= limit:
+                break
+    _save_history_cache(cache)
     return rows
 
 
@@ -214,7 +300,13 @@ def _still_needed(top: dict[str, str]):
 
 def build_plan(creds: api.Creds, notebook: str, labels: list[str]) -> dict:
     """Fresh signed URLs for each layer, resolved just before they are used."""
-    listed = [(label, version_files(creds, notebook, label)) for label in labels]
+    # Listed together: each is a few seconds of paging, and none depends on another.
+    with ThreadPoolExecutor(max_workers=max(1, min(4, len(labels)))) as pool:
+        listed = list(
+            zip(
+                labels, pool.map(lambda lb: version_files(creds, notebook, lb), labels), strict=True
+            )
+        )
     listed = [(label, files) for label, files in listed if files]
     needed = _still_needed(listed[-1][1]) if len(listed) > 1 else None
     layers = []
@@ -341,13 +433,26 @@ def follow(alias: str, progress=None) -> tuple[bool, dict]:
     return bool(last.get("restored")), last
 
 
+#: The longest one sync may take. A stalled tunnel otherwise hangs forever.
+RSYNC_TIMEOUT = 1800
+
+
 def _rsync(src: str, dst: str, *extra: str, excludes: bool = True) -> subprocess.CompletedProcess:
     cmd = ["rsync", "-az", "--partial", *extra, "-e", "ssh -o BatchMode=yes -o ConnectTimeout=20"]
     if excludes:
         for pattern in EXCLUDES:
             cmd += ["--exclude", pattern]
     cmd += [src, dst]
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=RSYNC_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        # Reported like any failed sync: push and pull keep their (ok, err)
+        # answer, and --partial lets the next attempt pick up where this left.
+        return subprocess.CompletedProcess(
+            cmd, 124, "", f"rsync timed out after {RSYNC_TIMEOUT // 60} min"
+        )
+    except OSError as e:
+        return subprocess.CompletedProcess(cmd, 127, "", f"could not run rsync: {e}")
 
 
 def wait_reachable(alias: str, timeout: int = 180) -> bool:
@@ -359,12 +464,18 @@ def wait_reachable(alias: str, timeout: int = 180) -> bool:
     """
     deadline = time.time() + timeout
     while time.time() < deadline:
-        r = subprocess.run(
-            ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", alias, "true"],
-            capture_output=True,
-        )
-        if r.returncode == 0:
-            return True
+        try:
+            # ConnectTimeout covers the TCP connect only; a ProxyCommand that
+            # connects and then stalls would hang here without a cap.
+            r = subprocess.run(
+                ["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", alias, "true"],
+                capture_output=True,
+                timeout=30,
+            )
+            if r.returncode == 0:
+                return True
+        except subprocess.TimeoutExpired:
+            pass
         time.sleep(5)
     return False
 

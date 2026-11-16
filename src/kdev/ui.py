@@ -1,13 +1,16 @@
 """kdev's design system. Every command builds its output from these parts only.
 
 Not a full-screen app, on purpose: `kdev up` ends by handing you a shell, and a
-UI you have to quit first would be in the way. The references, and what each
-contributed:
+UI you have to quit first would be in the way. The home screen (`kdev.menu`)
+is an inline app that gives the terminal back the moment you pick. The
+references, and what each contributed:
 
-  Docker Compose  the status board -- a line per step, each with its own clock
-  fly / vercel    the result card -- the few facts that matter, and the command
+  Mole (tw93)     the front door: a keyed menu, and every action also a command
+  clack           the rail that long, linear work is drawn on
+  Docker Compose  a clock per step, so a slow step is visibly slow
+  fly / vercel    the result card -- the few facts that matter, the command
                   to copy
-  gh              glyph-and-gutter status lines, and data on stdout
+  gh / Primer     glyph-and-gutter status lines; piped output as plain words
   Charm           a quiet palette where colour carries meaning, not decoration
 
 Tokens
@@ -18,16 +21,23 @@ Tokens
   muted   grey    labels, secondary facts, hints
   bold            the values that matter: hosts, names, counts
 
-Glyphs      ✓ done   ! attention   ✗ failed   ● live   ○ idle/pending   › step
+Glyphs  ✓ done  ! attention  ✗ failed  ● live  ○ pending  › prompt  ◇ step done
+        ┌ │ └ the rail  █ ▒ ░ a bar: left now, what the next box uses, used
 
 Components
-  header(title, facts)   pixel logo in colour terminals, then the command context
-  ok / warn / err        a status line; `hint` sits indented beneath
+  header(title, ctx)     the logo on the front door and in setup; one line,
+                         `›_ kdev › status`, everywhere else
+  ok / warn / err        a status line; `hint` sits indented beneath; text in
+                         `backticks` is drawn as a command
   facts(rows)            aligned label/value pairs
   card(title, rows)      the command's result, with facts and next actions
-  table(...)             restrained headers; labeled records on narrow terminals
-  Stages                 the live board for long operations
-  next_steps(cmds)       what to run next, commands in accent
+  section(title)         `Accounts ──────── 3 connected`, one line
+  table(...)             restrained headers; labeled records when narrow;
+                         tab-separated words when piped
+  Stages                 the rail for long operations, with remembered timings
+  bar / countdown        quota left (with the next box as a ghost), time left
+  next_steps(cmds)       `→ kdev up   start the box`
+  select / confirm / ask prompts; list rows are numbered and a digit picks
   spinner(text)          "doing something…", always present tense and lowercase
 
 Voice
@@ -35,8 +45,9 @@ Voice
   A command, when shown, is the literal thing to type. Durations like 9h or
   2m04s, clock times like 14:05. One result card per command.
 
-It degrades: without a TTY, boards become plain lines and prompts never
-appear; NO_COLOR is honoured; a terminal that cannot draw the glyphs gets ASCII.
+It degrades: without a TTY, boards become plain lines, cards plain facts and
+prompts never appear; NO_COLOR is honoured; a terminal that cannot draw the
+glyphs gets ASCII, and its typographic characters ASCII stand-ins.
 """
 
 from __future__ import annotations
@@ -46,7 +57,7 @@ import os
 import sys
 import time
 from collections.abc import Callable, Iterable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass
 from itertools import groupby
@@ -97,6 +108,8 @@ _LOGO_PALETTE = {
     "f": "default",  # Wordmark follows the foreground of light and dark terminals.
 }
 _logo_printed: ContextVar[bool | None] = ContextVar("kdev_logo_printed", default=None)
+#: Set while the home menu runs a pick: it printed the header already.
+_header_given: ContextVar[bool] = ContextVar("kdev_header_given", default=False)
 
 THEME = Theme(
     {
@@ -119,9 +132,31 @@ def _no_colour() -> bool:
     return bool(os.environ.get("NO_COLOR")) or os.environ.get("TERM") == "dumb"
 
 
-console = Console(theme=THEME, no_color=_no_colour(), soft_wrap=False)
+def _pipe_width(stream) -> int | None:
+    """Piped output is read by programs, not people: never wrap or crop it."""
+    try:
+        return None if stream.isatty() else 4096
+    except (AttributeError, ValueError):
+        return None
+
+
+class _Console(Console):
+    def on_broken_pipe(self) -> None:
+        """`kdev logs | head`: the reader left early, which is not a failure.
+        rich's own handler exits 1; scripts would read that as kdev failing."""
+        self.quiet = True
+        with suppress(OSError):
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        raise SystemExit(0)
+
+
+console = _Console(
+    theme=THEME, no_color=_no_colour(), soft_wrap=False, width=_pipe_width(sys.stdout)
+)
 #: Failures go to stderr, so `kdev status --json | jq` never sees them.
-errconsole = Console(theme=THEME, no_color=_no_colour(), soft_wrap=False, stderr=True)
+errconsole = _Console(
+    theme=THEME, no_color=_no_colour(), soft_wrap=False, stderr=True, width=_pipe_width(sys.stderr)
+)
 
 _GLYPHS = {
     "ok": ("✓", "+"),
@@ -132,7 +167,12 @@ _GLYPHS = {
     "bullet": ("·", "."),
     "full": ("█", "#"),
     "empty": ("░", "."),
+    "ghost": ("▒", "="),
     "prompt": ("›", ">"),
+    "done": ("◇", "o"),
+    "rail": ("│", "|"),
+    "top": ("┌", "+"),
+    "bottom": ("└", "+"),
     "arrow": ("→", "->"),
 }
 _SPINNERS = ("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏", "|/-\\")
@@ -143,6 +183,46 @@ def _ascii_only() -> bool:
     return os.environ.get("TERM") == "dumb" or not (
         "utf" in encoding or encoding in ("", "cp65001")
     )
+
+
+_ASCII = str.maketrans(
+    {
+        "·": ".",
+        "—": "-",
+        "–": "-",
+        "…": "...",
+        "×": "x",
+        "→": "->",
+        "›": ">",
+        "‹": "<",
+        "‘": "'",
+        "’": "'",
+        "“": '"',
+        "”": '"',
+    }
+)
+
+
+class _AsciiStream:
+    """stdout for a terminal that cannot draw `×` or `·`: the few typographic
+    characters in kdev's own sentences become their ASCII stand-ins, and
+    anything else unencodable a `?`, never a UnicodeEncodeError."""
+
+    def __init__(self, stream):
+        self._stream = stream
+        with suppress(AttributeError, ValueError):
+            stream.reconfigure(errors="replace")
+
+    def write(self, text: str) -> int:
+        return self._stream.write(text.translate(_ASCII))
+
+    def __getattr__(self, name: str):
+        return getattr(self._stream, name)
+
+
+if _ascii_only() and not isinstance(sys.stdout, _AsciiStream):
+    sys.stdout = _AsciiStream(sys.stdout)  # type: ignore[assignment]
+    sys.stderr = _AsciiStream(sys.stderr)  # type: ignore[assignment]
 
 
 def g(name: str) -> str:
@@ -201,8 +281,22 @@ def interactive() -> bool:
 GUTTER = 2
 
 
+def _styled(msg: str | Text, base: str = "", target: Console | None = None) -> Text:
+    """`backticked` spans in kdev's sentences are commands: draw them as one.
+    Where nothing is drawn (piped), the backticks stay: they are the quotes."""
+    if isinstance(msg, Text):
+        return msg
+    if target is not None and not target.is_terminal:
+        return Text(msg, style=base)
+    text = Text(style=base)
+    for i, part in enumerate(msg.split("`")):
+        if part:
+            text.append(part, style="kdev.cmd" if i % 2 else "")
+    return text
+
+
 def _line(target: Console, glyph: str, style: str, msg: str | Text) -> None:
-    line = Text.assemble((f"{glyph:<{GUTTER}}", style), msg)
+    line = Text.assemble((f"{glyph:<{GUTTER}}", style), _styled(msg, target=target))
     target.print(Padding(line, (0, 0, 0, GUTTER), expand=False) if target.is_terminal else line)
 
 
@@ -222,19 +316,33 @@ def err(msg: str | Text, hint_text: str = "") -> None:
     _line(errconsole, g("err"), "kdev.err", msg)
     if hint_text:
         errconsole.print(
-            Padding(Text(hint_text, style="kdev.muted"), (0, 0, 0, GUTTER), expand=False)
+            Padding(_styled(hint_text, "kdev.muted", errconsole), (0, 0, 0, GUTTER), expand=False)
         )
 
 
 def hint(msg: str | Text) -> None:
+    """Advice for a person. Piped, it goes to stderr: stdout is the data
+    (`kdev account | cut -f2`), and advice in it would be read as rows."""
+    target = console if console.is_terminal else errconsole
     # Padding rather than a literal prefix: a long hint that wraps keeps its
     # indent on the continuation lines instead of falling back to column 0.
-    text = msg if isinstance(msg, Text) else Text(msg, style="kdev.muted")
-    console.print(Padding(text, (0, 0, 0, GUTTER), expand=False))
+    target.print(Padding(_styled(msg, "kdev.muted", target), (0, 0, 0, GUTTER), expand=False))
 
 
 def blank() -> None:
-    console.print()
+    """Breathing room for a person; piped data gets none (no empty rows)."""
+    if console.is_terminal:
+        console.print()
+
+
+@contextmanager
+def header_given() -> Iterator[None]:
+    """Run a command whose header the caller already printed."""
+    token = _header_given.set(True)
+    try:
+        yield
+    finally:
+        _header_given.reset(token)
 
 
 @contextmanager
@@ -276,23 +384,13 @@ def _logo(*, compact: bool = False, metadata: Text | None = None) -> Text:
     return art
 
 
-def header(
-    title: str = "",
-    context: Sequence[tuple[str, str]] = (),
-    *,
-    terminal_only: bool = False,
-) -> None:
-    """Responsive branding and context; terminal-only headers preserve piped data."""
-    from . import __version__
+#: Commands whose header is the full logo: the front door and first run.
+#: Everything else gets one line, so the answer is on screen, not the brand.
+_LOGO_TITLES = ("", "overview", "setup")
 
-    if terminal_only and not console.is_terminal:
-        return
-    metadata = Text.assemble(
-        (title or "overview", "bold"),
-        (f"  {g('bullet')}  v{__version__}", "kdev.muted"),
-    )
-    full_logo = console.width >= max(_LOGO_WIDTH, _WORDMARK_LEFT + metadata.cell_len) + GUTTER
-    show_logo = (
+
+def _can_draw_logo() -> bool:
+    return bool(
         console.is_terminal
         and console.color_system
         and not console.no_color
@@ -301,45 +399,110 @@ def header(
         and console.width >= _ICON_WIDTH + GUTTER
         and _logo_printed.get() is not True
     )
-    if show_logo:
-        console.print(
-            Padding(
-                _logo(compact=not full_logo, metadata=metadata), (0, 0, 0, GUTTER), expand=False
-            )
+
+
+def _mark() -> Text:
+    """The one-line brand mark: the logo's own prompt and cursor, then the name."""
+    if not console.is_terminal or _ascii_only() or console.no_color or _no_colour():
+        return Text("kdev", style="kdev.head")
+    return Text.assemble(("›_", "kdev.accent"), " ", ("kdev", "bold"))
+
+
+def header(
+    title: str = "",
+    context: Sequence[tuple[str, str]] = (),
+    *,
+    terminal_only: bool = False,
+    logo: bool | None = None,
+) -> None:
+    """Branding and context. The front door gets the logo; every other command
+    one line -- `›_ kdev  status` with its context on the right -- so a
+    command's answer is never pushed below the fold by its own banner.
+    Terminal-only headers keep piped data clean."""
+    from . import __version__
+
+    if terminal_only and not console.is_terminal:
+        return
+    if _header_given.get():
+        return
+    width = min(console.width, MAX_WIDTH)
+    want_logo = title in _LOGO_TITLES if logo is None else logo
+    if want_logo and _can_draw_logo():
+        metadata = Text.assemble(
+            (title or "overview", "bold"),
+            (f"  {g('bullet')}  v{__version__}", "kdev.muted"),
         )
+        full = console.width >= max(_LOGO_WIDTH, _WORDMARK_LEFT + metadata.cell_len) + GUTTER
+        console.print(
+            Padding(_logo(compact=not full, metadata=metadata), (0, 0, 0, GUTTER), expand=False)
+        )
+        if not full:
+            line = Text.assemble(_mark(), "  ", metadata)
+            if line.cell_len + GUTTER > console.width:
+                line = Text.assemble(_mark(), "  ", (title or "overview", "bold"))
+            console.print()
+            console.print(Padding(line, (0, 0, 0, GUTTER), expand=False))
         if _logo_printed.get() is not None:
             _logo_printed.set(True)
-    if not (show_logo and full_logo):
-        if show_logo:
+        if context:
             console.print()
-        line = Text.assemble(("kdev", "kdev.head"))
-        if title:
-            line.append(f" {g('bullet')} ", style="kdev.muted")
-            line.append(title, style="bold")
+            console.print(_context_line(context, width))
+        console.print()
+        return
+
+    line = _mark()
+    if title:
+        line.append(f" {g('prompt')} ", style="kdev.muted")
+        line.append(title, style="bold")
+    if not context:
         line.append(f"  v{__version__}", style="kdev.muted")
-        if console.is_terminal:
-            console.print(Padding(line, (0, 0, 0, GUTTER), expand=False))
-        else:
-            console.print(line)
-    if context:
-        if show_logo and full_logo:
-            console.print()
-        row = Text("  ")
-        for i, (label, value) in enumerate(context):
-            if i:
-                row.append(f"  {g('bullet')}  ", style="kdev.muted")
-            row.append(f"{label} ", style="kdev.muted")
-            row.append(value)
-        if row.cell_len <= console.width:
-            console.print(row)
-        else:
-            # A hostname broken across two lines is unreadable and un-copyable.
-            width = max(len(label) for label, _ in context)
-            for label, value in context:
-                console.print(
-                    Text.assemble(("  ", ""), (f"{label:>{width}}  ", "kdev.muted"), value)
-                )
+    if not console.is_terminal:
+        console.print(line)
+        if context:
+            console.print(_context_line(context, width))
+        console.print()
+        return
+    right = _context_text(context)
+    room = width - GUTTER * 2 - line.cell_len - 4
+    if context and right.cell_len <= room:
+        row = Table.grid(expand=True, padding=0)
+        row.add_column(no_wrap=True)
+        row.add_column(justify="right", no_wrap=True)
+        row.add_row(line, right)
+        console.print(Padding(row, (0, GUTTER)), width=width)
+    else:
+        console.print(Padding(line, (0, 0, 0, GUTTER), expand=False))
+        if context:
+            console.print(_context_line(context, width))
+    console.print(
+        Padding(Rule(style="kdev.border", characters="-" if _ascii_only() else "─"), (0, GUTTER)),
+        width=width,
+    )
     console.print()
+
+
+def _context_text(context: Sequence[tuple[str, str]]) -> Text:
+    row = Text()
+    for i, (label, value) in enumerate(context):
+        if i:
+            row.append(f"  {g('bullet')}  ", style="kdev.muted")
+        row.append(f"{label} ", style="kdev.muted")
+        row.append(value)
+    return row
+
+
+def _context_line(context: Sequence[tuple[str, str]], width: int) -> RenderableType:
+    row = _context_text(context)
+    if row.cell_len + GUTTER <= width:
+        return Padding(row, (0, 0, 0, GUTTER), expand=False)
+    # A hostname broken across two lines is unreadable and un-copyable.
+    label_w = max(len(label) for label, _ in context)
+    return Group(
+        *(
+            Text.assemble((" " * GUTTER, ""), (f"{label:>{label_w}}  ", "kdev.muted"), value)
+            for label, value in context
+        )
+    )
 
 
 def _facts_body(rows: Sequence[tuple[str, object]], width: int) -> RenderableType:
@@ -361,59 +524,117 @@ def _facts_body(rows: Sequence[tuple[str, object]], width: int) -> RenderableTyp
     return grid
 
 
-def facts(rows: Sequence[tuple[str, object]], indent: int = GUTTER) -> Padding:
-    """Aligned facts, stacked when labels would crowd out their values."""
+def facts(rows: Sequence[tuple[str, object]], indent: int = GUTTER) -> RenderableType:
+    """Aligned facts, stacked when labels would crowd out their values.
+    Piped: `label  value` lines, with no padding after the value."""
+    if not console.is_terminal:
+        label_w = max((len(label) for label, _ in rows), default=0)
+        return Group(
+            *(
+                Text.assemble(
+                    " " * indent + f"{label:>{label_w}}  ",
+                    value if isinstance(value, Text) else str(value),
+                    no_wrap=True,
+                )
+                for label, value in rows
+                if label or value
+            )
+        )
     width = min(console.width, MAX_WIDTH) - indent
     return Padding(_facts_body(rows, width), (0, 0, 0, indent), expand=False)
 
 
 def section(title: str, detail: str = "") -> None:
-    """A quiet heading for a group of related information in a terminal."""
+    """A quiet one-line heading: `Accounts ──────── 3 connected`."""
     if not console.is_terminal:
         return
-    text = Text(title, style="bold")
+    width = min(console.width, MAX_WIDTH) - GUTTER * 2
+    rule = "-" if _ascii_only() else "─"
+    head = Text(title, style="bold")
+    tail = Text(detail, style="kdev.muted") if detail else Text()
+    fill = width - head.cell_len - tail.cell_len - (4 if detail else 2)
+    line = Text.assemble(head, " ", (rule * max(fill, 2), "kdev.border"))
     if detail:
-        text.append(f"  {g('bullet')}  {detail}", style="kdev.muted")
-    console.print(Padding(text, (0, 0, 0, GUTTER), expand=False))
-    console.print(
-        Padding(
-            Rule(style="kdev.border", characters="-" if _ascii_only() else "─"),
-            (0, GUTTER),
-        ),
-        width=min(console.width, MAX_WIDTH),
-    )
+        line.append(" ")
+        line.append(tail)
+    console.print(Padding(line, (0, 0, 0, GUTTER), expand=False), no_wrap=True, overflow="crop")
 
 
 def card(title: str | Text, rows: Sequence[tuple[str, object]], tone: str = "muted") -> None:
-    """A bounded result card, with space for facts and copyable commands."""
+    """A bounded result card, with space for facts and copyable commands.
+    Piped, it is a title line and plain facts: boxes are for people."""
     terminal = console.is_terminal
-    width = min(console.width, MAX_WIDTH)
+    if not terminal:
+        console.print(Text(title) if isinstance(title, str) else title)
+        console.print(facts(rows))
+        return
+    # On the gutter, the width of the header's rule: one left edge for all.
+    width = min(console.width, MAX_WIDTH) - GUTTER * 2
     padding = (1, 2 if width >= 48 else 1)
     body = _facts_body(rows, width - padding[1] * 2 - 2)
     border = {"ok": "kdev.ok", "warn": "kdev.warn", "err": "kdev.err"}.get(
         tone, "kdev.border" if terminal else MUTED
     )
-    console.print(
-        Panel(
-            body,
-            title=Text(title, style="bold default") if isinstance(title, str) else title,
-            title_align="left",
-            border_style=border,
-            box=box.ASCII if _ascii_only() else box.ROUNDED,
-            padding=padding,
-            width=width if terminal else None,
-            expand=terminal,
-        )
+    panel = Panel(
+        body,
+        title=Text(title, style="bold default") if isinstance(title, str) else title,
+        title_align="left",
+        border_style=border,
+        box=box.ASCII if _ascii_only() else box.ROUNDED,
+        padding=padding,
+        width=width,
+        expand=True,
     )
+    console.print(Padding(panel, (0, 0, 0, GUTTER), expand=False))
 
 
 class _ResponsiveTable(Table):
-    """Retain Table's public API while giving narrow terminals labeled records."""
+    """Retain Table's public API while giving narrow terminals labeled records.
+
+    In a terminal the table sits on the same two-space gutter as every other
+    line, header rule included."""
+
+    _in_gutter = False
 
     def __rich_console__(self, target: Console, options: ConsoleOptions) -> RenderResult:
         width = min(options.max_width, MAX_WIDTH)
-        threshold = 80 if len(self.columns) >= 5 else 64
-        if target.is_terminal and width < threshold:
+        if not target.is_terminal:
+            # Piped: tab-separated words, one record a line, so `cut -f2`
+            # and `awk -F'\t'` work and nothing wraps at 80 columns.
+            # An unlabeled first column is the active-account marker: as data
+            # it is a yes/no column called `active`.
+            marker = bool(self.columns) and not str(self.columns[0].header).strip()
+            header = [str(c.header).lower() or "-" for c in self.columns]
+            if marker:
+                header[0] = "active"
+            cells = [list(c.cells) for c in self.columns]
+            lines = ["\t".join(header)]
+            for index in range(self.row_count):
+                row = []
+                for n, column in enumerate(cells):
+                    cell = column[index]
+                    plain = (cell.plain if isinstance(cell, Text) else str(cell)).strip()
+                    if marker and n == 0:
+                        plain = "yes" if plain else "no"
+                    row.append("-" if plain in ("", "—") else plain)
+                lines.append("\t".join(row))
+            # Raw segments: rich expands tabs inside Text, which would turn
+            # the columns back into spaces.
+            from rich.segment import Segment
+
+            for line in lines:
+                yield Segment(line)
+                yield Segment.line()
+            return
+        if target.is_terminal and not self._in_gutter and width >= self._narrow_at():
+            self._in_gutter = True
+            try:
+                padded = Padding(self, (0, GUTTER))  # pyright: ignore[reportArgumentType]
+                yield from target.render(padded, options.update(width=width))
+            finally:
+                self._in_gutter = False
+            return
+        if target.is_terminal and width < self._narrow_at():
             if self.title:
                 yield Padding(Text(str(self.title), style="bold"), (0, 0, 1, GUTTER))
             cells = [list(column.cells) for column in self.columns]
@@ -439,6 +660,9 @@ class _ResponsiveTable(Table):
             return
         yield from super().__rich_console__(target, options)
 
+    def _narrow_at(self) -> int:
+        return 80 if len(self.columns) >= 5 else 64
+
 
 def table(
     columns: Sequence[tuple[str, str]], rows: Iterable[Sequence[object]], title: str = ""
@@ -451,14 +675,14 @@ def table(
         box=(box.ASCII if _ascii_only() else box.SIMPLE_HEAD) if terminal else None,
         border_style="kdev.border",
         expand=False,
-        padding=(0, 1) if terminal else (0, 2),
+        padding=(0, 2, 0, 0) if terminal else (0, 2),
         header_style="kdev.table_head" if terminal else "kdev.muted",
         title=title or None,
         title_style="bold",
         title_justify="left",
-        pad_edge=True,
+        pad_edge=not terminal,
         show_edge=not terminal,
-        width=min(console.width, MAX_WIDTH) if terminal else None,
+        width=None,
     )
     for name, justify in columns:
         t.add_column(name.upper(), justify=justify, overflow="fold")  # type: ignore[arg-type]
@@ -468,25 +692,33 @@ def table(
 
 
 def next_steps(steps: Sequence[tuple[str, str]]) -> None:
-    """What to run next. Commands in accent, aligned, one per line."""
+    """What to run next: `→ kdev up   start the box`, commands in accent."""
     if not steps:
         return
     if console.is_terminal:
-        section("Next")
-        rows = [
-            (Text(command, style="kdev.cmd"), Text(what, style="kdev.muted"))
-            for command, what in steps
-        ]
+        console.print()
+        arrow = g("arrow")
         if console.width < 64:
-            for command, what in rows:
-                console.print(Padding(Group(command, what), (0, GUTTER, 1, GUTTER)))
-        else:
-            grid = Table.grid(padding=(0, 3))
-            grid.add_column(overflow="fold")
-            grid.add_column(overflow="fold")
-            for command, what in rows:
-                grid.add_row(command, what)
-            console.print(Padding(grid, (0, GUTTER)), width=min(console.width, MAX_WIDTH))
+            for command, what in steps:
+                console.print(
+                    Padding(
+                        Group(
+                            Text.assemble((arrow + " ", "kdev.muted"), (command, "kdev.cmd")),
+                            Text("  " + " " * len(arrow) + what, style="kdev.muted"),
+                        ),
+                        (0, GUTTER),
+                    )
+                )
+            return
+        grid = Table.grid(padding=(0, 3))
+        grid.add_column(no_wrap=True)
+        grid.add_column(overflow="fold")
+        for command, what in steps:
+            grid.add_row(
+                Text.assemble((arrow + " ", "kdev.muted"), (command, "kdev.cmd")),
+                Text(what, style="kdev.muted"),
+            )
+        console.print(Padding(grid, (0, GUTTER)), width=min(console.width, MAX_WIDTH))
         return
     width = max(len(cmd) for cmd, _ in steps)
     for cmd, what in steps:
@@ -510,19 +742,39 @@ class _Status(Protocol):
     def update(self, *args: Any, **kwargs: Any) -> None: ...
 
 
+class _SpinnerLine:
+    """`⠋ checking…  4s`, on the gutter: the clock appears once a wait is
+    long enough to wonder about, so slow never looks like stuck."""
+
+    def __init__(self, text: str | Text):
+        from rich.spinner import Spinner
+
+        self.text: str | Text = text
+        self.started = time.monotonic()
+        self._spinner = Spinner("line" if _ascii_only() else "dots", style="kdev.accent")
+
+    def update(self, text: str | Text | None = None, **_: Any) -> None:
+        if text is not None:
+            self.text = text
+
+    def __rich__(self) -> RenderableType:
+        label = self.text if isinstance(self.text, Text) else Text(self.text, style="kdev.muted")
+        waited = time.monotonic() - self.started
+        if waited >= 3:
+            label = Text.assemble(label, (f"  {_fmt_elapsed(waited)}", "kdev.muted"))
+        self._spinner.text = label
+        return Padding(self._spinner, (0, 0, 0, GUTTER))
+
+
 @contextmanager
 def spinner(text: str) -> Iterator[_Status]:
     """A transient spinner. Present tense, lowercase, ends in an ellipsis."""
     if not interactive():
         yield _NullStatus()
         return
-    with console.status(
-        Text(text, style="kdev.muted"),
-        spinner="line" if _ascii_only() else "dots",
-        spinner_style="kdev.accent",
-        refresh_per_second=8,
-    ) as status:
-        yield status
+    line = _SpinnerLine(text)
+    with Live(line, console=console, refresh_per_second=10, transient=True):
+        yield line
 
 
 class _NullStatus:
@@ -535,14 +787,91 @@ def emit_json(data: object) -> None:
     sys.stdout.write(json.dumps(data, indent=2, sort_keys=True, default=str) + "\n")
 
 
-def bar(fraction: float, width: int = 14) -> Text:
-    """A quota bar. Colour is the signal; the number beside it is the detail."""
+def _headroom_colour(fraction: float) -> str:
+    return "green" if fraction > 0.5 else "yellow" if fraction > 0.15 else "red"
+
+
+def bar(fraction: float, width: int = 14, ghost: float = 0.0) -> Text:
+    """A quota bar. Colour is the signal; the number beside it is the detail.
+
+    `ghost` is the share the next box would use, drawn as a lighter run at
+    the end of the filled part: what is left now, and what will be after."""
     fraction = max(0.0, min(1.0, fraction))
+    ghost = max(0.0, min(fraction, ghost))
     filled = round(fraction * width)
-    colour = "green" if fraction > 0.5 else "yellow" if fraction > 0.15 else "red"
-    t = Text(g("full") * filled, style=colour)
+    after = round((fraction - ghost) * width) if ghost else filled
+    after = min(after, filled - 1) if ghost and filled else after
+    colour = _headroom_colour(fraction)
+    t = Text(g("full") * max(after, 0), style=colour)
+    if filled > after:
+        t.append(g("ghost") * (filled - after), style=f"{colour} dim")
     t.append(g("empty") * (width - filled), style=MUTED)
+    t.style = colour
     return t
+
+
+def countdown(started: float, ends: float, width: int = 16, now: float | None = None) -> Text:
+    """Time left on a box: a draining bar, then `5h12m left · ends 21:40`.
+    Yellow under 30 minutes, red under 10 -- the moment to save work."""
+    now = time.time() if now is None else now
+    total = max(ends - started, 1.0)
+    left = max(ends - now, 0.0)
+    if not console.is_terminal:
+        return Text(f"{fmt_left(left)} left, ends {time.strftime('%H:%M', time.localtime(ends))}")
+    colour = "red" if left < 600 else "yellow" if left < 1800 else "green"
+    filled = round(left / total * width)
+    t = Text()
+    t.append(g("full") * filled, style=colour)
+    t.append(g("empty") * (width - filled), style=MUTED)
+    t.append(f"  {fmt_left(left)} left", style="bold")
+    t.append(f"  {g('bullet')}  ends {time.strftime('%H:%M', time.localtime(ends))}", "kdev.muted")
+    return t
+
+
+def fmt_when(at: float, now: float | None = None) -> str:
+    """A moment in the coming week, as a person says it: `today 05:30`,
+    `tomorrow 05:30`, `Sat 05:30 (in 4d)`."""
+    now = time.time() if now is None else now
+    local, today = time.localtime(at), time.localtime(now)
+    clock = time.strftime("%H:%M", local)
+    days = (
+        time.mktime((*local[:3], 0, 0, 0, 0, 0, -1)) - time.mktime((*today[:3], 0, 0, 0, 0, 0, -1))
+    ) / 86400
+    days = round(days)
+    if days <= 0:
+        return f"today {clock}"
+    if days == 1:
+        return f"tomorrow {clock}"
+    return f"{time.strftime('%a', local)} {clock} (in {days}d)"
+
+
+def epoch(value: object) -> float:
+    """Seconds since the epoch from a number or an ISO-8601 string; 0 if neither."""
+    if isinstance(value, bool):
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value:
+        from datetime import UTC, datetime
+
+        try:
+            instant = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return 0.0
+        if instant.tzinfo is None:
+            instant = instant.replace(tzinfo=UTC)
+        return instant.timestamp()
+    return 0.0
+
+
+def fmt_left(seconds: float) -> str:
+    """5h12m, 42m, 30s: what a person reads at a glance."""
+    seconds = int(max(seconds, 0))
+    if seconds >= 3600:
+        return f"{seconds // 3600}h{seconds % 3600 // 60:02d}m"
+    if seconds >= 60:
+        return f"{seconds // 60}m"
+    return f"{seconds}s"
 
 
 def _fmt_elapsed(seconds: float) -> str:
@@ -569,6 +898,8 @@ class ProfileRow:
     tpu_total: int = 0
     active: bool = False
     error: str = ""
+    #: When Kaggle refills this account's weekly quota (epoch seconds), if known.
+    resets: float = 0.0
 
     @property
     def fraction(self) -> float:
@@ -605,9 +936,12 @@ def accounts_table(rows: Sequence[ProfileRow]) -> Table:
                 Text("-" if _ascii_only() else "—"),
             )
         else:
-            meter = bar(r.fraction, width=10 if console.is_terminal else 14)
             if console.is_terminal:
-                meter.append(f"  {r.fraction:.0%}", style="kdev.muted")
+                meter = Text.assemble(
+                    bar(r.fraction, width=10), (f"  {r.fraction:.0%}", "kdev.muted")
+                )
+            else:
+                meter = Text(f"{r.fraction:.0%}")
             t.add_row(
                 marker,
                 name,
@@ -619,7 +953,9 @@ def accounts_table(rows: Sequence[ProfileRow]) -> Table:
     return t
 
 
-def pick_profile(rows: Sequence[ProfileRow], need_hours: float) -> str:
+def pick_profile(
+    rows: Sequence[ProfileRow], need_hours: float, question: str = "Which account should run it?"
+) -> str:
     """Account picker with quota inline, most quota first."""
     usable = [r for r in rows if not r.error]
     if not usable:
@@ -634,10 +970,12 @@ def pick_profile(rows: Sequence[ProfileRow], need_hours: float) -> str:
     for r in usable:
         meter = "".join(g("full") if j < round(r.fraction * 10) else g("empty") for j in range(10))
         note = "" if r.gpu_left >= need_hours * 3600 else "   short for this session"
+        if r.active:
+            note += "   (active now)"
         choices.append(
             Choice(title=f"{r.name:<{width}}  {meter} {r.hours:>6} left{note}", value=r.name)
         )
-    return select("Which account should run it?", choices)
+    return select(question, choices)
 
 
 # --- prompts ------------------------------------------------------------------
@@ -647,17 +985,102 @@ def _prompt_style() -> questionary.Style:
     return _MONO_STYLE if _no_colour() or console.no_color else STYLE
 
 
+def _QMARK() -> str:
+    """The prompt mark, on the gutter like every other line."""
+    return " " * GUTTER + g("prompt")
+
+
+def _answered(question: str, answer: str) -> None:
+    """One answered line, the same for every kind of prompt and however it
+    was answered: `  › Question  Answer`."""
+    console.print(
+        Padding(
+            Text.assemble(
+                (g("prompt") + " ", "kdev.accent"),
+                (question, "bold"),
+                "  ",
+                (answer, "kdev.accent"),
+            ),
+            (0, 0, 0, GUTTER),
+            expand=False,
+        ),
+        highlight=False,
+    )
+
+
+def _answer(question: Any) -> Any:
+    """Ask, and turn Ctrl-C into None quietly: questionary's own `ask` prints
+    "Cancelled by user", and kdev already says "cancelled" once."""
+    unsafe = getattr(question, "unsafe_ask", None)
+    if unsafe is None:
+        return question.ask()
+    try:
+        return unsafe()
+    except KeyboardInterrupt:
+        return None
+
+
 def select(question: str, choices: list[Choice]) -> str:
-    answer = questionary.select(
+    """A list to pick from: arrows or j/k to move, enter to pick, or a digit
+    to pick that row at once -- the numbers are shown beside each choice."""
+    numbered: list[Choice] = []
+    picks: dict[str, object] = {}
+    labels: dict[int, str] = {}
+    for choice in choices:
+        if isinstance(choice, Choice) and not choice.disabled and len(picks) < 9:
+            key = str(len(picks) + 1)
+            picks[key] = choice.value
+            title = choice.title if isinstance(choice.title, str) else str(choice.title)
+            labels[id(choice.value)] = title.split("  ")[0].strip()
+            numbered.append(
+                Choice(
+                    title=f"{key}  {title}",
+                    value=choice.value,
+                    disabled=choice.disabled,
+                    checked=choice.checked,
+                    description=getattr(choice, "description", None),
+                )
+            )
+        else:
+            numbered.append(choice)
+    question_ = questionary.select(
         question,
-        choices=choices,
+        choices=numbered,
         style=_prompt_style(),
-        qmark=g("prompt"),
-        pointer=g("prompt"),
-        instruction="(up/down to move, enter to select)",
-    ).ask()
+        qmark=_QMARK(),
+        pointer=" " + g("prompt"),
+        instruction=" ",
+        use_jk_keys=True,
+        use_indicator=False,
+        erase_when_done=True,
+    )
+    app = getattr(question_, "application", None)
+    if app is not None and picks:
+        from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
+
+        extra = KeyBindings()
+        for key, value in picks.items():
+
+            @extra.add(key, eager=True)
+            def _pick(event, value=value) -> None:
+                event.app.exit(result=value)
+
+        app.key_bindings = merge_key_bindings([app.key_bindings, extra])  # type: ignore[list-item]
+    answer = _answer(question_)
     if answer is None:
         raise Cancelled()
+    # One answered line, the same however it was picked: `› Question  Answer`.
+    label = labels.get(id(answer)) or next(
+        (
+            lb
+            for v, lb in (
+                (c.value, labels.get(id(c.value))) for c in choices if isinstance(c, Choice)
+            )
+            if v == answer and lb
+        ),
+        str(answer),
+    )
+    _answered(question, label)
     return answer
 
 
@@ -674,26 +1097,34 @@ def confirm(question: str, default: bool = True) -> bool:
     wherever saying yes would lose something."""
     if not interactive():
         return default
-    answer = questionary.confirm(
-        question, default=default, style=_prompt_style(), qmark=g("prompt")
-    ).ask()
+    answer = _answer(
+        questionary.confirm(
+            question,
+            default=default,
+            style=_prompt_style(),
+            qmark=_QMARK(),
+            erase_when_done=True,
+        )
+    )
     if answer is None:
         raise Cancelled()
+    _answered(question, "yes" if answer else "no")
     return answer
 
 
 def ask(question: str, default: str = "", secret: bool = False) -> str:
     # Called separately: `password` takes no default, and the two signatures
     # are honest on their own terms rather than joined through **kwargs.
+    common = {"style": _prompt_style(), "qmark": _QMARK(), "erase_when_done": True}
     if secret:
-        answer = questionary.password(question, style=_prompt_style(), qmark=g("prompt")).ask()
+        answer = _answer(questionary.password(question, **common))
     else:
-        answer = questionary.text(
-            question, default=default, style=_prompt_style(), qmark=g("prompt")
-        ).ask()
+        answer = _answer(questionary.text(question, default=default, **common))
     if answer is None:
         raise Cancelled()
-    return answer.strip()
+    answer = answer.strip()
+    _answered(question, "•" * min(len(answer), 8) if secret else answer or "—")
+    return answer
 
 
 GPU_CHOICES = [
@@ -705,7 +1136,8 @@ GPU_CHOICES = [
 
 
 def gpu_label(key: str) -> str:
-    return {k: label for k, label, _ in GPU_CHOICES}.get(key, key)
+    label = {k: label for k, label, _ in GPU_CHOICES}.get(key, key)
+    return label.replace("×", "x") if _ascii_only() else label
 
 
 def pick_gpu() -> str:
@@ -715,19 +1147,28 @@ def pick_gpu() -> str:
     )
 
 
-def pick_hours(gpu: str, quota_hours: float) -> float:
+def pick_hours(gpu: str, quota_hours: float | None = None) -> float:
+    """Session length, each choice with what it leaves of this week's quota
+    (`quota_hours`, when known; a CPU box uses none)."""
     cap = 9.0 if gpu == "tpu" else 12.0
     options = [h for h in (2.0, 4.0, 9.0, 12.0) if h <= cap]
     choices = []
     for h in options:
-        note = f"   more than the {quota_hours:.1f}h left" if h > quota_hours else ""
-        choices.append(Choice(title=f"{h:g} hours{note}", value=h))
+        note = ""
+        if quota_hours is not None and gpu != "none":
+            if h > quota_hours:
+                note = f"   more than the {quota_hours:.1f}h left; Kaggle stops it early"
+            else:
+                note = f"   leaves {quota_hours - h:.1f}h this week"
+        choices.append(Choice(title=f"{h:g} hours".ljust(8) + note, value=h))
     choices.append(Choice(title="Custom…", value=0.0))
     answer = float(select(f"Session length? (Kaggle stops it at {cap:g}h)", choices))
     if answer == 0.0:
-        raw = questionary.text(
-            "Hours:", default="6", style=_prompt_style(), qmark=g("prompt")
-        ).ask()
+        raw = _answer(
+            questionary.text(
+                "Hours", default="6", style=_prompt_style(), qmark=_QMARK(), erase_when_done=True
+            )
+        )
         if raw is None:
             raise Cancelled()
         from .errors import KdevError
@@ -759,6 +1200,46 @@ class _Stage:
         return (self.ended or time.monotonic()) - self.started
 
 
+def _timings_path() -> Path:
+    from .config import CONFIG_DIR
+
+    return CONFIG_DIR / "timings.json"
+
+
+def _load_timings() -> dict[str, float]:
+    try:
+        data = json.loads(_timings_path().read_text())
+    except (OSError, ValueError):
+        return {}
+    return {k: float(v) for k, v in data.items() if isinstance(v, (int, float))}
+
+
+def _save_timings(measured: dict[str, float], previous: dict[str, float]) -> None:
+    """Remember each step's time, smoothed, so a slow step reads as slow."""
+    if not measured:
+        return
+    merged = dict(previous)
+    for key, seconds in measured.items():
+        old = previous.get(key)
+        merged[key] = round(seconds if old is None else old * 0.6 + seconds * 0.4, 1)
+    try:
+        path = _timings_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(merged, indent=1, sort_keys=True))
+    except OSError:
+        pass
+
+
+class _LiveBoard:
+    """What Live draws: the board as it is at this refresh, not as it was."""
+
+    def __init__(self, board: Stages):
+        self.board = board
+
+    def __rich__(self) -> RenderableType:
+        return self.board._render(final=self.board._final)
+
+
 class Stages:
     """Live board, modelled on Docker Compose's: each step keeps its own line
     and clock, so a slow step is visibly slow rather than indistinguishable
@@ -773,6 +1254,12 @@ class Stages:
         self.tick = 0
         self.started = time.monotonic()
         self._live: Live | None = None
+        #: How long each step took last time on this machine, by key.
+        self.usual: dict[str, float] = _load_timings()
+        self._final = False
+        #: Whether this run's clocks are worth remembering. A joined session's
+        #: log replays in milliseconds and would make "usually" meaningless.
+        self.record = True
 
     @property
     def done(self) -> list[str]:
@@ -780,8 +1267,10 @@ class Stages:
 
     def __enter__(self) -> Stages:
         if interactive():
+            # The board renders itself on every refresh, so its clocks and
+            # spinner keep moving through a long, silent step.
             self._live = Live(
-                self._render(), console=console, refresh_per_second=8, transient=False
+                _LiveBoard(self), console=console, refresh_per_second=8, transient=False
             )
             self._live.__enter__()
         elif self.head:
@@ -789,16 +1278,29 @@ class Stages:
         return self
 
     def __exit__(self, *exc) -> None:
+        if exc[0] is not None:
+            # Interrupted or failed mid-step: that step did not finish, and
+            # the last frame must not draw it as done.
+            stage = self._by_key.get(self.current or "")
+            if stage and not stage.ended:
+                stage.failed = True
+                stage.ended = time.monotonic()
         if self._live:
-            self._live.update(self._render(final=True))
+            self._final = True
+            self._live.update(_LiveBoard(self))
             self._live.__exit__(*exc)
+        complete = len(self.done) == len(self._stages)
+        if self._live and exc[0] is None and self.record and complete:
+            _save_timings(
+                {s.key: s.elapsed for s in self._stages if s.ended and not s.failed}, self.usual
+            )
 
     def _marks(self, stage: _Stage, final: bool) -> tuple[Text, Text]:
         running = stage.key == self.current and not stage.ended and not final
         if stage.failed:
             glyph, style, label_style = g("err"), "kdev.err", "kdev.err"
         elif stage.ended or (stage.key == self.current and final):
-            glyph, style, label_style = g("ok"), "kdev.ok", ""
+            glyph, style, label_style = g("done"), "kdev.ok", ""
         elif running:
             frames = _spinner_frames()
             glyph, style, label_style = frames[self.tick % len(frames)], "kdev.accent", "bold"
@@ -806,55 +1308,72 @@ class Stages:
             glyph, style, label_style = g("pending"), "kdev.muted", "kdev.muted"
         return Text(glyph, style=style), Text(stage.label, style=label_style)
 
-    def _render(self, final: bool = False) -> Group | Panel:
+    def _render(self, final: bool = False) -> Group:
+        """A rail, after clack: one row per step, each with its own clock, the
+        running one with how long it usually takes on this machine."""
         self.tick += 1
-        lines = []
-        if self.head and not console.is_terminal:
-            head = Text("  " + self.head, style="kdev.muted")
-            head.append(f"   {_fmt_elapsed(time.monotonic() - self.started)}", style="kdev.muted")
-            lines.append(head)
-        board = Table.grid(padding=(0, 1), expand=console.is_terminal)
-        board.add_column(width=2)
-        board.add_column(width=1)
-        board.add_column(ratio=1, overflow="fold")
-        board.add_column(justify="right")
+        rail = Text(g("rail"), style="kdev.border")
+        board = Table.grid(padding=(0, 2), expand=False)
+        board.add_column(width=1, no_wrap=True)
+        board.add_column(overflow="fold", min_width=min(36, max(console.width - 24, 10)))
+        board.add_column(justify="right", no_wrap=True, min_width=5)
+        board.add_column(no_wrap=True, style="kdev.muted")
+        failed = next((s for s in self._stages if s.failed), None)
+        lines: list[RenderableType] = []
+        if self.head:
+            lines.append(
+                Padding(
+                    Text.assemble((g("top") + "  ", "kdev.border"), (self.head, "bold")),
+                    (0, 0, 0, GUTTER),
+                )
+            )
+            board.add_row(rail, "", "", "")
         for stage in self._stages:
             glyph, label = self._marks(stage, final)
-            clock = _fmt_elapsed(stage.elapsed) if stage.started else ""
-            board.add_row("", glyph, label, Text(clock, style="kdev.muted"))
+            clock = Text(_fmt_elapsed(stage.elapsed) if stage.started else "", "kdev.muted")
+            running = stage.key == self.current and not stage.ended and not final
+            usual = self.usual.get(stage.key)
+            # Only once it is worth knowing, and never for a step that is
+            # usually instant: "usually 0s" would only alarm.
+            note = (
+                f"usually {_fmt_elapsed(usual)}"
+                if running and usual and usual >= 3 and stage.elapsed >= 2
+                else ""
+            )
+            board.add_row(glyph, label, clock, note)
             # A failed stage keeps its detail on the final frame: the reason it
             # failed is the whole point of the line.
             if self.detail and stage.key == self.current and (not final or stage.failed):
-                board.add_row("", "", Text(self.detail, style="kdev.muted"), "")
-        lines.append(board)
-        if console.is_terminal:
-            elapsed = _fmt_elapsed(time.monotonic() - self.started)
-            completed = len(self.done)
-            summary = Text(
-                f"{completed}/{len(self._stages)} complete  {g('bullet')}  {elapsed}",
-                style="kdev.muted",
+                board.add_row(rail, Text(self.detail, style="kdev.muted"), "", "")
+        board.add_row(rail, "", "", "")
+        elapsed = _fmt_elapsed(time.monotonic() - self.started)
+        if failed:
+            end = Text.assemble(
+                (g("bottom") + "  ", "kdev.err"),
+                (f"stopped at {failed.label.lower()}", "kdev.err"),
+                (f"  {g('bullet')}  {elapsed}", "kdev.muted"),
             )
-            content: list[RenderableType] = []
-            if self.head:
-                content.append(Text(self.head, style="bold"))
-                content.append(Text(""))
-            content.append(board)
-            return Panel(
-                Group(*content),
-                title=Text("Progress", style="bold default"),
-                subtitle=summary,
-                title_align="left",
-                subtitle_align="right",
-                border_style="kdev.border",
-                box=box.ASCII if _ascii_only() else box.ROUNDED,
-                padding=(1, 1),
-                width=min(console.width, MAX_WIDTH),
+        elif final and len(self.done) == len(self._stages):
+            end = Text.assemble(
+                (g("bottom") + "  ", "kdev.ok"),
+                ("done", "kdev.ok"),
+                (f" in {elapsed}", "kdev.muted"),
             )
+        else:
+            end = Text.assemble(
+                (g("bottom") + "  ", "kdev.border"),
+                (
+                    f"{len(self.done)}/{len(self._stages)} complete  {g('bullet')}  {elapsed}",
+                    "kdev.muted",
+                ),
+            )
+        lines.append(Padding(board, (0, 0, 0, GUTTER)))
+        lines.append(Padding(end, (0, 0, 0, GUTTER)))
         return Group(*lines)
 
     def _refresh(self) -> None:
         if self._live:
-            self._live.update(self._render())
+            self._live.refresh()
 
     def advance(self, key: str) -> None:
         now = time.monotonic()
@@ -897,20 +1416,40 @@ class Stages:
         if stage and not stage.ended:
             stage.ended = time.monotonic()
         if self._live:
-            self._live.update(self._render(final=True))
+            self._final = True
+            self._live.refresh()
 
     def refresh(self) -> None:
         self._refresh()
 
 
-def ready_card(alias: str, host: str, hours: float, gpu: str, account: str, note: str = "") -> None:
-    """How `up` ends: the facts about the box, and how to get in."""
-    ends = time.localtime(time.time() + hours * 3600)
+def ready_card(
+    alias: str,
+    host: str,
+    hours: float,
+    gpu: str,
+    account: str,
+    note: str = "",
+    *,
+    started: float = 0.0,
+    ends: float = 0.0,
+) -> None:
+    """How `up` ends: the facts about the box, and how to get in. `started`
+    and `ends` are the box's own record when known: it stops a little before
+    Kaggle would, so the clock must come from it, not from `hours`."""
+    now = time.time()
+    if ends:
+        hours = max(ends - now, 0) / 3600
     rows: list[tuple[str, object]] = [
         ("host", Text(host, style="bold")),
         ("account", account),
         ("accelerator", gpu),
-        ("ends", f"{time.strftime('%H:%M', ends)}  ({hours:g}h from now)"),
+        (
+            "time",
+            countdown(now, now + hours * 3600, width=12)
+            if console.is_terminal
+            else f"{hours:g}h, ends {time.strftime('%H:%M', time.localtime(now + hours * 3600))}",
+        ),
     ]
     if note:
         rows.append(("files", note))

@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 
-from . import api, config, ui
+import httpx
+
+from . import api, auth, config, ui
 from .errors import KdevError
 
 
@@ -33,6 +35,10 @@ def remaining(quota: dict, kind: str = "gpuQuota") -> tuple[int, int]:
     return max(total - used, 0), total
 
 
+#: A quota row's error when Kaggle could not be reached at all.
+OFFLINE = "offline: could not reach Kaggle"
+
+
 def _row(cfg: config.Config, name: str) -> ui.ProfileRow:
     prof = cfg.profiles[name]
     row = ui.ProfileRow(
@@ -41,11 +47,37 @@ def _row(cfg: config.Config, name: str) -> ui.ProfileRow:
     try:
         q = api.quota(prof.creds)
     except api.KaggleError as e:
-        row.error = "signed out: kdev account add " + name if e.status == 401 else str(e)[:48]
+        if e.status == 401:
+            row.error = "signed out: kdev account add " + name
+        elif e.status == 0:
+            row.error = OFFLINE
+        else:
+            row.error = str(e)[:48]
+        return row
+    except auth.AuthUnavailable:
+        row.error = OFFLINE
+        return row
+    except auth.AuthError:
+        row.error = "signed out: kdev account add " + name
+        return row
+    except (httpx.HTTPError, OSError) as e:
+        row.error = str(e)[:48] or type(e).__name__
         return row
     row.gpu_left, row.gpu_total = remaining(q)
     row.tpu_left, row.tpu_total = remaining(q, "tpuQuota")
+    row.resets = ui.epoch(q.get("quotaRefreshTime"))
     return row
+
+
+def row(cfg: config.Config, name: str) -> ui.ProfileRow:
+    """One account's quota; errors are on the row, never raised."""
+    return _row(cfg, name)
+
+
+def resets(rows: list[ui.ProfileRow]) -> float:
+    """The next quota refill among the accounts (Kaggle refills them all at
+    the same weekly moment), or 0 if no account said."""
+    return min((r.resets for r in rows if r.resets), default=0.0)
 
 
 def rows(cfg: config.Config) -> list[ui.ProfileRow]:

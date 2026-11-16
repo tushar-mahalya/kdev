@@ -37,12 +37,15 @@ def need_notebook(cfg: config.Config, override: str = "") -> str:
 
 
 def context(cfg: config.Config, account: str = "", notebook: str = "") -> list[tuple[str, str]]:
-    """The facts a header shows: who, which notebook, which tunnel."""
-    return [
-        ("account", account or cfg.active or "—"),
-        ("notebook", notebook or cfg.notebook or "—"),
-        ("tunnel", cfg.tunnel_hostname or "quick"),
-    ]
+    """The facts a header shows: who runs it, and which notebook. The
+    notebook's owner is left out when it is that same account: the line
+    stays short enough for the right-hand side of the header."""
+    who = account or cfg.active or "—"
+    where = notebook or cfg.notebook or "—"
+    owner, _, slug = where.partition("/")
+    if slug and owner == (cfg.profiles[who].username if who in cfg.profiles else who):
+        where = slug
+    return [("account", who), ("notebook", where)]
 
 
 def box_label(cfg: config.Config) -> str:

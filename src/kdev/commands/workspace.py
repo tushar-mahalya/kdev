@@ -80,6 +80,7 @@ def files(
     ),
     account: str = typer.Option("", "--account", "-a", help="Read as this account."),
     as_json: bool = typer.Option(False, "--json", help="Print JSON instead."),
+    every: bool = typer.Option(False, "--all", help="Every file, one per line."),
 ) -> None:
     """What a saved version holds -- what `kdev up` restores."""
     cfg = config.load()
@@ -96,8 +97,10 @@ def files(
             else:
                 # The newest version with files: a running box's own has none.
                 latest = int(api.get_kernel(creds, target).get("currentVersionNumber") or 0)
-                version, found = persistence.newest_saved(creds, target, latest)
-                listing = list(found)
+                version, _ = persistence.newest_saved(creds, target, latest)
+                listing = (
+                    list(persistence.version_files(creds, target, version) or {}) if version else []
+                )
         except api.KaggleError as e:
             raise KdevError(
                 f"Could not read {version or 'the saved files'} of {target}.", str(e)
@@ -114,15 +117,38 @@ def files(
     if as_json:
         ui.emit_json({"notebook": target, "version": version or None, "files": names})
         return
-    ui.console.print(
-        Text.assemble((target, "bold"), ("  " + (version or "no saved version"), "kdev.muted"))
+    if every or not ui.console.is_terminal:
+        for name in names:
+            ui.console.print(name, highlight=False, markup=False, soft_wrap=True)
+        return
+    ui.section(
+        target,
+        f"{version or 'no saved version'}  {ui.g('bullet')}  {len(names):,} file(s)",
     )
-    for name in names[:50]:
-        ui.hint(name)
-    if len(names) > 50:
-        ui.hint(f"… and {len(names) - 50} more (--json lists them all)")
     if not names:
         ui.hint("nothing saved yet")
+        return
+    # A workspace is a few projects, each thousands of files deep: show the
+    # shape -- each top-level entry and how much is under it.
+    tops: dict[str, int] = {}
+    for name in names:
+        head, sep, _ = name.partition("/")
+        key = head + "/" if sep else head
+        tops[key] = tops.get(key, 0) + 1
+    shown = sorted(tops.items(), key=lambda kv: (not kv[0].endswith("/"), kv[0].lower()))
+    grid = ui.Table.grid(padding=(0, 3))
+    grid.add_column(no_wrap=True, overflow="ellipsis")
+    grid.add_column(justify="right", style="kdev.muted", no_wrap=True)
+    for key, count in shown[:40]:
+        folder = key.endswith("/")
+        grid.add_row(
+            Text(key, style="bold kdev.accent" if folder else ""),
+            f"{count:,} file(s)" if folder else "",
+        )
+    ui.console.print(ui.Padding(grid, (0, ui.GUTTER)))
+    if len(shown) > 40:
+        ui.hint(f"… and {len(shown) - 40} more entries")
+    ui.next_steps([("kdev workspace files --all", "every file, one per line")])
 
 
 @app.command("join")
@@ -139,7 +165,6 @@ def join(account: str = typer.Option("", "--account", "-a", help="Look as this a
     if nb.join(cfg, prof.creds, prof.username):
         _adopt(cfg, prof.creds)
         config.save(cfg)
-        ui.blank()
         ui.next_steps([("kdev up", "start the box")])
 
 
@@ -185,7 +210,6 @@ def create(
     ui.ok(f"shared with {group} (Can Edit)")
     cfg.notebook, cfg.notebook_id, cfg.group_slug = slug, kid, group
     config.save(cfg)
-    ui.blank()
     ui.next_steps(
         [
             ("kdev up", "start the box"),

@@ -10,8 +10,8 @@ from pathlib import Path
 import typer
 from rich.text import Text
 
-from .. import api, config, tunnel, ui
-from ..errors import KdevError
+from .. import api, config, session, tunnel, ui
+from ..errors import KdevError, did_you_mean
 from ._common import cap_for
 
 app = typer.Typer(
@@ -21,7 +21,10 @@ app = typer.Typer(
 
 def _gpu(value: str, cfg: config.Config) -> str:
     if value not in api.SHAPES:
-        raise KdevError(f"gpu must be one of: {', '.join(api.SHAPES)}.")
+        raise KdevError(
+            f"No accelerator called `{value}`.{did_you_mean(value, api.SHAPES)}",
+            f"Choose one of: {', '.join(api.SHAPES)}",
+        )
     cap = cap_for(value)
     if cfg.default_hours and cfg.default_hours > cap:
         cfg.default_hours = cap
@@ -117,8 +120,26 @@ def _shown(cfg: config.Config, key: str) -> Text:
 
 def _key(name: str) -> Setting:
     if name not in SETTINGS:
-        raise KdevError(f"No setting called {name!r}.", "Settings: " + ", ".join(SETTINGS))
+        raise KdevError(
+            f"No setting called `{name}`.{did_you_mean(name, SETTINGS)}",
+            "See them all: `kdev config`",
+        )
     return SETTINGS[name]
+
+
+#: Settings that ~/.ssh/config's kdev block is written from.
+SSH_SETTINGS = ("ssh-alias", "tunnel-hostname")
+
+
+def _sync_ssh(cfg: config.Config, name: str) -> None:
+    """Rewrite the ssh block after a setting it is made of changed: left
+    alone, `kdev ssh` would ask ssh for an alias the file no longer has."""
+    if name not in SSH_SETTINGS:
+        return
+    try:
+        session.ssh_ready(cfg, host_changed=name == "tunnel-hostname")
+    except OSError as e:
+        ui.warn(f"could not update ~/.ssh/config ({e}); the next kdev up will")
 
 
 @app.callback()
@@ -157,6 +178,7 @@ def set_(
     setting = _key(name)
     setattr(cfg, setting.attr, setting.parse(value, cfg))
     config.save(cfg)
+    _sync_ssh(cfg, name)
     ui.ok(Text.assemble((name, "bold"), " is now ", _shown(cfg, name)))
 
 
@@ -168,4 +190,5 @@ def unset(name: str = typer.Argument(..., help="The setting to reset.")) -> None
     setting = _key(name)
     setattr(cfg, setting.attr, config.Config.__dataclass_fields__[setting.attr].default)
     config.save(cfg)
+    _sync_ssh(cfg, name)
     ui.ok(Text.assemble((name, "bold"), " is back to ", _shown(cfg, name)))

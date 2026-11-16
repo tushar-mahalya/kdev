@@ -11,7 +11,6 @@ A system install always wins; the managed copy is a fallback so that
 
 from __future__ import annotations
 
-import hashlib
 import os
 import platform
 import shutil
@@ -128,19 +127,21 @@ def install(progress=None) -> Path:
     return dest
 
 
-def _download(url: str, dest: Path, progress=None) -> str:
-    sha = hashlib.sha256()
+def _download(url: str, dest: Path, progress=None) -> None:
+    # Not checksummed: Cloudflare's only published sums are free text in the
+    # release notes, behind a separate (rate-limited) GitHub API call that can
+    # race `latest`, and for the macOS .tgz they do not match the asset
+    # (checked on 2026.11.0). TLS to GitHub, plus the `--version` run after
+    # install, is the check.
     with urllib.request.urlopen(url, timeout=120) as r:
         total = int(r.headers.get("Content-Length") or 0)
         done = 0
         with dest.open("wb") as f:
             while chunk := r.read(262144):
                 f.write(chunk)
-                sha.update(chunk)
                 done += len(chunk)
                 if progress:
                     progress(done, total)
-    return sha.hexdigest()
 
 
 def ensure(auto: bool = True, progress=None) -> Path:
@@ -150,7 +151,7 @@ def ensure(auto: bool = True, progress=None) -> Path:
         return found
     if not auto:
         raise KdevError(
-            "cloudflared not found. Run `kdev doctor --install` or "
+            "cloudflared not found. Run `kdev doctor --fix` or "
             "install it yourself: brew install cloudflared"
         )
     return install(progress)
