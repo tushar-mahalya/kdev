@@ -169,7 +169,7 @@ def test_header_shows_compact_multicolour_logo_in_a_colour_terminal(monkeypatch)
     assert len(lines[: lines.index("")]) == 5
     assert all(len(line) <= terminal.width for line in lines)
     assert any(char in text for char in "█▀▄")
-    assert "setup  ·  v" in text and "box.example.com" in text
+    assert "setup  ·  v" in text and "tunnel box.example.com" in text
     for rgb in ("0;184;212", "67;213;237", "33;142;255"):
         assert rgb in output.getvalue()
 
@@ -294,7 +294,7 @@ def test_subcommands_get_a_one_line_header_with_their_context(monkeypatch):
     monkeypatch.setattr(ui, "console", terminal)
     ui.header("up", [("account", "alice"), ("tunnel", "box.example.com")])
     lines = terminal.export_text().splitlines()
-    assert "kdev › up" in lines[0] and "box.example.com" in lines[0]
+    assert "kdev › up" in lines[0] and "tunnel box.example.com" in lines[0]
     assert not any(char in "".join(lines) for char in "█▀▄")
 
 

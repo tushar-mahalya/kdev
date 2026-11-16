@@ -14,6 +14,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from rich.style import Style
 
 #: What `cloudflared.find` answers in tests. Never executed.
 FAKE_CLOUDFLARED = Path("/opt/kdev-test/bin/cloudflared")
@@ -66,6 +67,12 @@ def _isolated(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(sshcfg, "SSH_CONFIG", home / ".ssh" / "config")
     monkeypatch.setattr(cloudflared, "find", lambda: FAKE_CLOUDFLARED)
     monkeypatch.setattr(auth, "_cache", {})
+    # Rich memoises parsed styles, and each Style keeps the ANSI codes of the
+    # first colour system it rendered for. A test that renders through a
+    # 16-colour console (Typer forces one under GITHUB_ACTIONS) would otherwise
+    # leave truecolor tests seeing `36` where `#00b8d4` should be.
+    Style.parse.cache_clear()
+    Style._add.cache_clear()
 
     monkeypatch.setattr(httpx.Client, "send", _guard(httpx.Client.send, _request_url))
     monkeypatch.setattr(httpx.AsyncClient, "send", _guard(httpx.AsyncClient.send, _request_url))
