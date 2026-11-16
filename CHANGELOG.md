@@ -6,6 +6,8 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-16
+
 ### Added
 - A new home screen. Bare `kdev` in a terminal is a live menu that is usable
   at once: the box and every account's quota fill in while it is on screen, a
@@ -55,8 +57,8 @@ All notable changes are recorded here. The format follows
 
 ### Changed
 - The terminal UI uses a geometric KDEV wordmark and terminal badge, consistent rounded
-  workspace and result cards, clearer account quotas, framed progress with
-  elapsed times, and grouped command help. Tables and next actions adapt to
+  workspace and result cards, clearer account quotas, and grouped command
+  help. Tables and next actions adapt to
   narrow terminals without dropping values. Light/dark terminal colors,
   ASCII and monochrome prompts remain usable; live refresh is limited to 8 Hz.
 
