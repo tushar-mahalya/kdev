@@ -1,30 +1,108 @@
 # kdev Individual Contributor License Agreement
 
-> Derived from the SAP Individual Contributor License Agreement, the default
-> agreement offered by [CLA Assistant](https://cla-assistant.io)
-> ([source](https://gist.github.com/CLAassistant/bd1ea8ec8aa0357414e8)). Only the
-> names of the parties and the project, the contact line and two line-wrap
-> typos have been changed. You accept it by
-> following the link CLA Assistant posts on your first pull request.
+> This agreement is derived from the
+> [Apache Software Foundation Individual Contributor License Agreement V2.2](https://www.apache.org/licenses/icla.pdf).
+> The terms are unchanged except that the recipient is the kdev maintainer
+> instead of the Foundation, the paper form fields and email instructions are
+> replaced by signing through [CLA Assistant](https://cla-assistant.io), and
+> the clauses that refer to the Foundation's nonprofit status and to a
+> Foundation Corporate CLA are removed because they do not apply.
+>
+> You sign it once, by following the link that the CLA Assistant bot posts on
+> your first pull request. It does not change the project's
+> [MIT License](https://github.com/tushar-mahalya/kdev/blob/main/LICENSE).
 
-Thank you for your interest in contributing to kdev, the open source software project made available at https://github.com/tushar-mahalya/kdev (the “Project”) by Tushar Sharma (GitHub: tushar-mahalya) (the “Maintainer”). This Individual Contributor License Agreement (“Agreement”) sets out the terms governing any source code, object code, bug fixes, configuration changes, tools, specifications, documentation, data, materials, feedback, information or other works of authorship that you submit or have submitted, in any form and in any manner, to the Maintainer in respect of the Project (collectively “Contributions”). If you have any questions respecting this Agreement, please ask in the Project's discussions at https://github.com/tushar-mahalya/kdev/discussions.
+Thank you for your interest in kdev (the "Project"), maintained by
+Tushar Sharma (GitHub: [tushar-mahalya](https://github.com/tushar-mahalya))
+(the "Maintainer"). To clarify the intellectual property license granted with
+Contributions from any person or entity, the Maintainer must have on file a
+signed Contributor License Agreement ("CLA") from each Contributor, indicating
+agreement with the license terms below. This agreement is for your protection
+as a Contributor as well as the protection of the Maintainer and the
+Project's users. It does not change your rights to use your own Contributions
+for any other purpose.
 
-You agree that the following terms apply to all of your past, present and future Contributions. Except for the licenses granted in this Agreement, you retain all of your right, title and interest in and to your Contributions.
+You accept and agree to the following terms and conditions for Your
+Contributions (present and future) that you submit to the Maintainer. Except
+for the license granted herein to the Maintainer and recipients of software
+distributed by the Maintainer, You reserve all right, title, and interest in
+and to Your Contributions.
 
-**Copyright License.** You hereby grant, and agree to grant, to the Maintainer a non-exclusive, perpetual, irrevocable, worldwide, fully-paid, royalty-free, transferable copyright license to reproduce, prepare derivative works of, publicly display, publicly perform, and distribute your Contributions and such derivative works, with the right to sublicense the foregoing rights through multiple tiers of sublicensees.
+1. Definitions.
 
-**Patent License.** You hereby grant, and agree to grant, to the Maintainer a non-exclusive, perpetual, irrevocable, worldwide, fully-paid, royalty-free, transferable patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer your Contributions, where such license applies only to those patent claims licensable by you that are necessarily infringed by your Contributions alone or by combination of your Contributions with the Project, with the right to sublicense the foregoing rights through multiple tiers of sublicensees.
+   "You" (or "Your") shall mean the copyright owner or legal entity authorized
+   by the copyright owner that is making this Agreement with the Maintainer.
+   For legal entities, the entity making a Contribution and all other entities
+   that control, are controlled by, or are under common control with that
+   entity are considered to be a single Contributor. For the purposes of this
+   definition, "control" means (i) the power, direct or indirect, to cause the
+   direction or management of such entity, whether by contract or otherwise,
+   or (ii) ownership of fifty percent (50%) or more of the outstanding shares,
+   or (iii) beneficial ownership of such entity.
 
-**Moral Rights.** To the fullest extent permitted under applicable law, you hereby waive, and agree not to assert, all of your “moral rights” in or relating to your Contributions for the benefit of the Maintainer, the Maintainer's assigns, and their respective direct and indirect sublicensees.
+   "Contribution" shall mean any original work of authorship, including any
+   modifications or additions to an existing work, that is intentionally
+   submitted by You to the Maintainer for inclusion in, or documentation of,
+   the Project (the "Work"). For the purposes of this definition, "submitted"
+   means any form of electronic, verbal, or written communication sent to the
+   Maintainer or its representatives, including but not limited to
+   communication on electronic mailing lists, source code control systems,
+   and issue tracking systems that are managed by, or on behalf of, the
+   Maintainer for the purpose of discussing and improving the Work, but
+   excluding communication that is conspicuously marked or otherwise
+   designated in writing by You as "Not a Contribution."
 
-**Third Party Content/Rights.** If your Contribution includes or is based on any source code, object code, bug fixes, configuration changes, tools, specifications, documentation, data, materials, feedback, information or other works of authorship that were not authored by you (“Third Party Content”) or if you are aware of any third party intellectual property or proprietary rights associated with your Contribution (“Third Party Rights”), then you agree to include with the submission of your Contribution full details respecting such Third Party Content and Third Party Rights, including, without limitation, identification of which aspects of your Contribution contain Third Party Content or are associated with Third Party Rights, the owner/author of the Third Party Content and Third Party Rights, where you obtained the Third Party Content, and any applicable third party license terms or restrictions respecting the Third Party Content and Third Party Rights. For greater certainty, the foregoing obligations respecting the identification of Third Party Content and Third Party Rights do not apply to any portion of the Project that is incorporated into your Contribution to the Project.
+2. Grant of Copyright License. Subject to the terms and conditions of this
+   Agreement, You hereby grant to the Maintainer and to recipients of software
+   distributed by the Maintainer a perpetual, worldwide, non-exclusive,
+   no-charge, royalty-free, irrevocable copyright license to reproduce,
+   prepare derivative works of, publicly display, publicly perform,
+   sublicense, and distribute Your Contributions and such derivative works.
 
-**Representations.** You represent that, other than the Third Party Content and Third Party Rights identified by you in accordance with this Agreement, you are the sole author of your Contributions and are legally entitled to grant the foregoing licenses and waivers in respect of your Contributions. If your Contributions were created in the course of your employment with your past or present employer(s), you represent that such employer(s) has authorized you to make your Contributions on behalf of such employer(s) or such employer(s) has waived all of their right, title or interest in or to your Contributions.
+3. Grant of Patent License. Subject to the terms and conditions of this
+   Agreement, You hereby grant to the Maintainer and to recipients of software
+   distributed by the Maintainer a perpetual, worldwide, non-exclusive,
+   no-charge, royalty-free, irrevocable (except as stated in this section)
+   patent license to make, have made, use, offer to sell, sell, import, and
+   otherwise transfer the Work, where such license applies only to those
+   patent claims licensable by You that are necessarily infringed by Your
+   Contribution(s) alone or by combination of Your Contribution(s) with the
+   Work to which such Contribution(s) was submitted. If any entity institutes
+   patent litigation against You or any other entity (including a cross-claim
+   or counterclaim in a lawsuit) alleging that your Contribution, or the Work
+   to which you have contributed, constitutes direct or contributory patent
+   infringement, then any patent licenses granted to that entity under this
+   Agreement for that Contribution or Work shall terminate as of the date
+   such litigation is filed.
 
-**Disclaimer.** To the fullest extent permitted under applicable law, your Contributions are provided on an "as-is" basis, without any warranties or conditions, express or implied, including, without limitation, any implied warranties or conditions of non-infringement, merchantability or fitness for a particular purpose. You are not required to provide support for your Contributions, except to the extent you desire to provide support.
+4. You represent that you are legally entitled to grant the above license. If
+   your employer(s) has rights to intellectual property that you create that
+   includes your Contributions, you represent that you have received
+   permission to make Contributions on behalf of that employer, or that your
+   employer has waived such rights for your Contributions to the Maintainer.
 
-**No Obligation.** You acknowledge that the Maintainer is under no obligation to use or incorporate your Contributions into the Project. The decision to use or incorporate your Contributions into the Project will be made at the sole discretion of the Maintainer or the Maintainer's authorized delegates.
+5. You represent that each of Your Contributions is Your original creation
+   (see section 7 for submissions on behalf of others). You represent that
+   Your Contribution submissions include complete details of any third-party
+   license or other restriction (including, but not limited to, related
+   patents and trademarks) of which you are personally aware and which are
+   associated with any part of Your Contributions.
 
-**Disputes.** This Agreement shall be governed by and construed in accordance with the laws of the State of New York, United States of America, without giving effect to its principles or rules regarding conflicts of laws, other than such principles directing application of New York law. The parties hereby submit to venue in, and jurisdiction of the courts located in New York, New York for purposes relating to this Agreement. In the event that any of the provisions of this Agreement shall be held by a court or other tribunal of competent jurisdiction to be unenforceable, the remaining portions hereof shall remain in full force and effect.
+6. You are not expected to provide support for Your Contributions, except to
+   the extent You desire to provide support. You may provide support for
+   free, for a fee, or not at all. Unless required by applicable law or
+   agreed to in writing, You provide Your Contributions on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied,
+   including, without limitation, any warranties or conditions of TITLE,
+   NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE.
 
-**Assignment.** You agree that the Maintainer may assign this Agreement, and all of its rights, obligations and licenses hereunder.
+7. Should You wish to submit work that is not Your original creation, You may
+   submit it to the Maintainer separately from any Contribution, identifying
+   the complete details of its source and of any license or other restriction
+   (including, but not limited to, related patents, trademarks, and license
+   agreements) of which you are personally aware, and conspicuously marking
+   the work as "Submitted on behalf of a third-party: [named here]".
+
+8. You agree to notify the Maintainer of any facts or circumstances of which
+   you become aware that would make these representations inaccurate in any
+   respect.
