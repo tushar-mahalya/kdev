@@ -93,6 +93,27 @@ on-box restore against a temporary directory.
   [CHANGELOG.md](https://github.com/tushar-mahalya/kdev/blob/main/CHANGELOG.md), and update the README if a command or its
   behaviour changes.
 
+## Automated review
+
+[CodeRabbit](https://coderabbit.ai) reviews every pull request: it posts a
+summary and line comments within a few minutes, and reviews again when you
+push. Its comments are suggestions. Fix what is right, reply to what isn't,
+and leave the rest; a maintainer decides what merges. You can talk to it in
+the pull request: mention `@coderabbitai` with a question, or
+`@coderabbitai review` to ask for a fresh review.
+
+## Contributor License Agreement
+
+Before your first pull request can merge, you sign the kdev
+[Contributor License Agreement](https://github.com/tushar-mahalya/kdev/blob/main/CLA.md). It says that you wrote what you
+contribute (or have the right to submit it) and lets the project keep
+distributing it. You keep the copyright in your work.
+
+You don't need to do anything in advance: the CLA Assistant bot comments on
+your first pull request with a link, and signing takes one click with your
+GitHub account. It covers all your later pull requests. If the agreement
+itself changes, the bot asks you to sign the new version.
+
 ## Releasing
 
 For maintainers: bump `version` in `pyproject.toml`, move the `Unreleased`
@@ -104,4 +125,5 @@ with the wheel and sdist attached.
 ## License
 
 kdev is [MIT licensed](https://github.com/tushar-mahalya/kdev/blob/main/LICENSE). By contributing, you agree that your
-contributions are licensed under the same terms.
+contributions are licensed under the same terms, and you grant the rights
+set out in the [Contributor License Agreement](https://github.com/tushar-mahalya/kdev/blob/main/CLA.md).

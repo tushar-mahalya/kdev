@@ -1,0 +1,138 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Reviews are advice: CodeRabbit is not a required check, and a maintainer
+# decides what merges. Switch `profile` to `assertive` for stricter reviews.
+language: en-US
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+    ignore_usernames:
+      - dependabot[bot]
+      - renovate[bot]
+      - github-actions[bot]
+
+  path_filters:
+    - "!uv.lock"
+    - "!website/package-lock.json"
+    - "!.secrets.baseline"
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/node_modules/**"
+    - "!htmlcov/**"
+    - "!coverage.md"
+    # Search-engine verification files; their bytes must not change.
+    - "!website/public/google*.html"
+    - "!website/public/[0-9a-f]*.txt"
+
+  path_instructions:
+    - path: "src/kdev/**/*.py"
+      instructions: |
+        Layering (see CONTRIBUTING.md and docs/ARCHITECTURE.md): `commands/` parses
+        arguments, calls logic and renders with `ui`, making no Kaggle API calls of
+        its own beyond reads. The behaviour lives in `session`, `persistence`,
+        `quota` and `notebook` and must stay testable without a terminal.
+        Everything the user sees goes through `ui.py`; flag new output that
+        bypasses it. A failure the user can act on is a `KdevError` that
+        names the command that fixes it, not a bare exception or traceback.
+        Flag any path by which OAuth tokens, tunnel credentials or deploy keys
+        could reach logs (including `-v` API logging) or error messages.
+        Type hints are checked by basedpyright (basic mode); ruff is configured in
+        pyproject.toml, so skip pure style comments it would already catch.
+    - path: "src/kdev/kdev_box.py"
+      instructions: |
+        This module is shipped into the Kaggle container and runs there: it must
+        stay standard-library only, with no imports from the rest of `kdev`.
+        Restore must never touch a file that existed before it started, and
+        `.kdev/state.json` must say `restored: false` until every layer is in
+        place. Flag anything that could break either rule or that assumes a
+        clean exit (a session can be killed at any point).
+    - path: "src/kdev/ui.py"
+      instructions: |
+        The design system. New elements use the tokens, glyphs and gutter
+        documented in the module docstring, and the docstring is updated when a
+        component is added or changed. Piped (non-TTY) output stays plain words.
+    - path: "tests/**/*.py"
+      instructions: |
+        Tests stay offline: Kaggle is faked (see the fake in tests/test_cli.py),
+        and nothing may reach the network or a real account. A bug fix comes
+        with a test that fails without the fix; check that the assertion would
+        actually catch a regression. Tests are split by module, one
+        `test_<module>.py` each.
+    - path: ".github/workflows/**"
+      instructions: |
+        Every action is pinned to a full commit SHA with a `# vX.Y.Z` comment;
+        flag tag- or branch-pinned `uses:`. Workflows default to
+        `permissions: contents: read` and widen per job only where needed. Flag
+        `pull_request_target`, untrusted `${{ github.event.* }}` interpolated into
+        `run:` scripts, and secrets exposed to jobs that run on fork PRs.
+    - path: "website/src/content/docs/**"
+      instructions: |
+        User docs, published at https://kdev-cli.pages.dev. Commands, flags and
+        defaults must match the CLI in src/kdev. contributing.md mirrors the
+        repo's CONTRIBUTING.md; a change to one usually belongs in both.
+    - path: "website/**/*.{astro,ts,mjs}"
+      instructions: |
+        Astro static site deployed to Cloudflare Pages. Keep it static: no new
+        runtime dependencies or third-party scripts without a stated reason.
+    - path: "CHANGELOG.md"
+      instructions: |
+        Keep a Changelog 1.1.0. New entries go under `## [Unreleased]`, in
+        Added/Changed/Fixed/Removed, written for users: what they will notice,
+        not how it was implemented.
+    - path: "**/*.md"
+      instructions: |
+        Plain, direct prose in the second person, as in the existing docs. When a
+        command or its behaviour changes, README.md, the website docs and
+        docs/ARCHITECTURE.md must agree with each other and with the code.
+
+  tools:
+    ruff:
+      enabled: true
+      config_file: pyproject.toml
+    actionlint:
+      enabled: true
+    zizmor:
+      enabled: true
+    yamllint:
+      enabled: true
+    markdownlint:
+      enabled: true
+    gitleaks:
+      enabled: true
+    osvScanner:
+      enabled: true
+    biome:
+      enabled: true
+    github-checks:
+      enabled: true
+    # Covered by ruff, biome, gitleaks and detect-secrets, or no matching files here.
+    pylint:
+      enabled: false
+    flake8:
+      enabled: false
+    eslint:
+      enabled: false
+    oxc:
+      enabled: false
+    trufflehog:
+      enabled: false
+    hadolint:
+      enabled: false
+    languagetool:
+      enabled: false
+    shellcheck:
+      enabled: false
+    htmlhint:
+      enabled: false
+
+chat:
+  auto_reply: true
