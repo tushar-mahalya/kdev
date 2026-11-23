@@ -130,3 +130,5 @@ with the wheel and sdist attached.
 kdev is [MIT licensed](LICENSE). By contributing, you agree that your
 contributions are licensed under the same terms, and you grant the rights
 set out in the [Contributor License Agreement](CLA.md).
+
+<!-- Integration check: CodeRabbit + CLA Assistant. This PR will be closed, not merged. -->
