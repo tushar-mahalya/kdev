@@ -20,14 +20,16 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development",
 ]
-# Floors are the versions kdev is tested against: typer 0.27 is the first
-# with its own exception types, kaggle 2.2 ships the OAuth `auth login` flow
-# and the kagglesdk that token refresh depends on.
+# Floors are the versions kdev is tested against (CI runs the suite on the
+# lowest ones): typer 0.27.2 is the first to export `typer.TyperException`,
+# questionary 2.1 is the first whose `Choice` takes a `description`, kaggle 2.2
+# ships the OAuth `auth login` flow and the kagglesdk that token refresh
+# depends on.
 dependencies = [
     "httpx>=0.27,<1",
     "kaggle>=2.2,<3",
-    "typer>=0.27,<1",
-    "questionary>=2.0,<3",
+    "typer>=0.27.2,<1",
+    "questionary>=2.1,<3",
     # The home menu is a small prompt_toolkit app of its own (questionary is
     # built on it too).
     "prompt-toolkit>=3.0.36,<4",
@@ -84,3 +86,12 @@ ignore = ["E501", "RUF001", "RUF002", "RUF003"]  # the design glyphs are deliber
 include = ["src", "tests"]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
+
+# Measured on the package alone, wherever `--cov` is run from. The floor sits a
+# few points under the current total (74.8%), so coverage cannot drop unnoticed;
+# raise it when the total rises.
+[tool.coverage.run]
+source = ["kdev"]
+
+[tool.coverage.report]
+fail_under = 71

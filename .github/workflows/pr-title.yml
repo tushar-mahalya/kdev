@@ -1,0 +1,45 @@
+# Pull requests are squash-merged and the PR title becomes the commit on main,
+# so lint it as a Conventional Commit. The types match the commit-msg hook in
+# .pre-commit-config.yaml. See CONTRIBUTING.md.
+# pull_request_target runs this file from main and never checks out pull request code.
+name: PR title
+
+on:
+  pull_request_target: # zizmor: ignore[dangerous-triggers] no checkout; the title is read through the API
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  conventional-title:
+    name: Conventional PR title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read # read the title
+    steps:
+      - uses: amannn/action-semantic-pull-request@2252a14e810aa9b85c2d560bd7070c802206ecf6 # v6.1.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          types: |
+            build
+            chore
+            ci
+            docs
+            feat
+            fix
+            perf
+            refactor
+            revert
+            style
+            test
+          requireScope: false
+          subjectPattern: ^(?![A-Z][a-z]).+[^.]$
+          subjectPatternError: >-
+            The subject "{subject}" in "{title}" must not start with a capitalised
+            word ("add the flag", not "Add the flag") and must not end with a period.

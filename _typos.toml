@@ -1,0 +1,22 @@
+# Spell check (https://github.com/crate-ci/typos), run by pre-commit.
+[files]
+extend-exclude = [
+  # Generated or fetched, not written by hand.
+  "uv.lock",
+  "website/package-lock.json",
+  ".secrets.baseline",
+  # Checked-in site assets: key files and search-engine verification files.
+  "website/public/*.txt",
+  "website/public/google*.html",
+  # Local design kit, not part of kdev.
+  ".agents/",
+]
+
+[default.extend-identifiers]
+# "the box's own": an apostrophe cannot be part of a Python name.
+test_restore_uses_the_boxs_own_notebook_not_this_machines = "test_restore_uses_the_boxs_own_notebook_not_this_machines"
+test_only_the_boxs_own_runtime_files_are_skipped = "test_only_the_boxs_own_runtime_files_are_skipped"
+
+[default.extend-words]
+# CSS class prefix for the previous/next links in website/src/layouts/Docs.astro.
+pn = "pn"

@@ -1,0 +1,9 @@
+* text=auto eol=lf
+*.png binary
+*.ico binary
+
+# Written by tools, not by hand. GitHub collapses these in pull request diffs
+# and leaves them out of language stats.
+uv.lock linguist-generated=true
+website/package-lock.json linguist-generated=true
+.secrets.baseline linguist-generated=true
