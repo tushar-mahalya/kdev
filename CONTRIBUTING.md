@@ -11,6 +11,9 @@ Before you change the box, the tunnel or the restore, read
 
 By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
+How decisions are made is in [GOVERNANCE.md](GOVERNANCE.md); where to get help is
+in [SUPPORT.md](SUPPORT.md).
+
 ## Ways to help
 
 - **Ask a question** in [Discussions](https://github.com/tushar-mahalya/kdev/discussions):

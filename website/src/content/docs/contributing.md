@@ -10,6 +10,9 @@ is small and opinionated, so for anything bigger than a fix, open an issue
 first and say what you want to change and why. It saves you writing code that
 goes a different way than the project.
 
+How decisions are made is in [GOVERNANCE.md](https://github.com/tushar-mahalya/kdev/blob/main/GOVERNANCE.md); where to get help is
+in [SUPPORT.md](https://github.com/tushar-mahalya/kdev/blob/main/SUPPORT.md).
+
 ## Ways to help
 
 - **Ask a question** in [Discussions](https://github.com/tushar-mahalya/kdev/discussions):

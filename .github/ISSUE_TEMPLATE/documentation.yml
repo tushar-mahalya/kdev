@@ -1,0 +1,40 @@
+name: Documentation problem
+description: Missing, unclear or incorrect documentation, or a command's help text.
+title: "docs: "
+labels: [documentation]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a question about using kdev, ask in [Q&A](https://github.com/tushar-mahalya/kdev/discussions/categories/q-a) instead.
+  - type: input
+    id: location
+    attributes:
+      label: Where
+      description: The URL or path of the page or section, or the command whose `--help` is wrong.
+      placeholder: "https://kdev-cli.pages.dev/docs/troubleshooting/ or kdev forward --help"
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of problem
+      options:
+        - Incorrect or out of date
+        - Missing
+        - Unclear or hard to follow
+        - Broken link or anchor
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong or missing
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: What it should say
+      description: Optional. Proposed wording.
