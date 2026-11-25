@@ -37,7 +37,7 @@ You need Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 ```bash
 git clone https://github.com/tushar-mahalya/kdev && cd kdev
 uv sync
-uv run pre-commit install        # hooks on commit, tests on push
+uv run pre-commit install        # hooks on commit and commit message, tests on push
 uv run basedpyright              # basic-mode type check, also on every commit
 uv run pytest                    # unit and regression tests, no network needed
 uv run pytest --cov              # the same suite with a local coverage report
@@ -45,8 +45,9 @@ uv run kdev -v …                 # the working tree, with API logging
 ```
 
 Every commit runs formatting, lint, type-checking (`basedpyright`), a secrets scan
-(`detect-secrets`, private-key detection), config validation and a lockfile
-check; every push runs the tests. CI runs the same hooks, the tests on Python
+(`detect-secrets`, private-key detection), a spell check (`typos`), config
+validation, a workflow security audit (`zizmor`, `actionlint`) and a lockfile
+check, and its message must be a Conventional Commit; every push runs the tests. CI runs the same hooks, the tests on Python
 3.11–3.13, a build-and-install check, and `gitleaks` over the full history.
 
 ## Trying a change against real Kaggle
@@ -88,9 +89,14 @@ on-box restore against a temporary directory.
 - **Match the code around you.** `kdev_box.py` stays standard-library only.
   Everything the user sees goes through `ui.py`. A failure the user can act on
   is a `KdevError` with the command that fixes it.
-- **Commit messages** follow [Conventional Commits](https://www.conventionalcommits.org/)
-  (`fix:`, `feat:`, `docs:`, `test:`, `ci:`, `refactor:`), with the *why* in
-  the body.
+- **Commit messages and the pull request title** follow
+  [Conventional Commits](https://www.conventionalcommits.org/): `type: subject`
+  or `type(scope): subject`, with the type one of `feat`, `fix`, `docs`,
+  `test`, `ci`, `build`, `chore`, `refactor`, `perf`, `style` or `revert`. Start
+  the subject with a lowercase word and leave off the final period; put the
+  *why* in the body. A `commit-msg` hook checks each commit, and a check on the
+  pull request checks its title, because we squash-merge and the title becomes
+  the commit on `main`.
 - **Record what users will notice** under `## [Unreleased]` in
   [CHANGELOG.md](CHANGELOG.md). If a command or its behaviour changes, update
   the [README](README.md), the [website docs](website/src/content/docs/) and,

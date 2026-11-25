@@ -1,8 +1,8 @@
 # Runs on every commit (and `pytest` on every push). CI runs the same hooks,
 # so what passes here passes there. Install once per clone:
-#   uv run pre-commit install --install-hooks -t pre-commit -t pre-push
+#   uv run pre-commit install --install-hooks -t pre-commit -t commit-msg -t pre-push
 # New hooks below are pinned to commit SHAs (the comment names the release).
-default_install_hook_types: [pre-commit, pre-push]
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
 default_stages: [pre-commit]
 
 repos:
@@ -57,6 +57,16 @@ repos:
         # Report only. The default writes its suggestions into the files, which
         # would rename identifiers that are spelled on purpose.
         args: [--force-exclude]
+
+  # Commit messages are Conventional Commits, as CONTRIBUTING.md asks. The
+  # pull-request title check (.github/workflows/pr-title.yml) uses the same
+  # types; any scope is accepted (`fix(config):`, `build(deps):`).
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: 33b50eb042bee26eac0ee96ad84aa9c1b4dccdd8 # frozen: v4.5.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test]
 
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0
