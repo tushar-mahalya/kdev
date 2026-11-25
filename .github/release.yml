@@ -1,0 +1,21 @@
+# Categories for GitHub's generated release notes ("Generate release notes" and
+# `gh release create --generate-notes`). Pull requests are sorted into the first match.
+# The release workflow itself uses the CHANGELOG.md section as the notes.
+changelog:
+  exclude:
+    labels: [ignore-for-release, duplicate, invalid, wontfix]
+  categories:
+    - title: Breaking changes
+      labels: [breaking-change]
+    - title: Features
+      labels: [enhancement]
+    - title: Fixes
+      labels: [bug, security]
+    - title: Performance
+      labels: [performance]
+    - title: Documentation
+      labels: [documentation]
+    - title: Dependencies
+      labels: [dependencies]
+    - title: Other changes
+      labels: ["*"]

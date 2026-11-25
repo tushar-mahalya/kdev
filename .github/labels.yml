@@ -1,0 +1,85 @@
+# Repository labels as code. .github/workflows/sync-labels.yml applies this file on main.
+# Labels missing from this file are kept (skip-delete), so remove a label here and in the UI.
+# Rename a label with `from_name` to keep it on existing issues and pull requests.
+
+# Type
+- name: bug
+  color: "d73a4a"
+  description: Something isn't working
+- name: enhancement
+  color: "a2eeef"
+  description: New feature or request
+- name: documentation
+  color: "0075ca"
+  description: Improvements or additions to documentation
+- name: dependencies
+  color: "0366d6"
+  description: Pull requests that update a dependency file
+- name: performance
+  color: "5319e7"
+  description: Makes kdev or the box faster
+- name: quota
+  color: "fbca04"
+  description: Saves Kaggle GPU/TPU quota or session time
+- name: breaking-change
+  color: "b60205"
+  description: Changes behavior or configuration in a way users must act on
+- name: security
+  color: "ee0701"
+  description: Hardening or a fix for a security weakness
+- name: accessibility
+  color: "f143ab"
+  description: Barrier affecting people with disabilities
+
+# Area (applied to pull requests by .github/labeler.yml)
+- name: "area: cli"
+  color: "c5def5"
+  description: Commands, prompts and the terminal UI
+- name: "area: box"
+  color: "c5def5"
+  description: Starting, stopping and restoring the box, quota, and kdev_box.py
+- name: "area: tunnel"
+  color: "c5def5"
+  description: Cloudflare tunnel, SSH config and port forwarding
+- name: "area: kaggle"
+  color: "c5def5"
+  description: Kaggle API client, accounts and settings
+- name: "area: tests"
+  color: "c5def5"
+  description: Test suite
+- name: "area: docs"
+  color: "c5def5"
+  description: README, architecture notes and community files
+- name: "area: website"
+  color: "c5def5"
+  description: Project website and its docs pages
+- name: "area: ci"
+  from_name: ci
+  color: "c5def5"
+  description: Workflows, hooks and release packaging
+- name: "area: deps"
+  color: "c5def5"
+  description: Dependency manifests and lockfiles
+
+# Triage and status
+- name: question
+  color: "d876e3"
+  description: Further information is requested
+- name: good first issue
+  color: "7057ff"
+  description: Good for newcomers
+- name: help wanted
+  color: "008672"
+  description: Extra attention is needed
+- name: duplicate
+  color: "cfd3d7"
+  description: This issue or pull request already exists
+- name: invalid
+  color: "e4e669"
+  description: This doesn't seem right
+- name: wontfix
+  color: "ffffff"
+  description: This will not be worked on
+- name: ignore-for-release
+  color: "ededed"
+  description: Leave out of generated release notes

@@ -1,0 +1,88 @@
+# Pull request labels for actions/labeler (.github/workflows/labeler.yml).
+# Area labels follow changed paths. Type labels follow the head branch prefix
+# (feat/, fix/, docs/) described in CONTRIBUTING.md. Labels are defined in .github/labels.yml.
+
+"area: cli":
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/kdev/cli.py
+          - src/kdev/__main__.py
+          - src/kdev/commands/**
+          - src/kdev/errors.py
+          - src/kdev/menu.py
+          - src/kdev/ui.py
+          - src/kdev/wizard.py
+
+"area: box":
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/kdev/bootstrap.py
+          - src/kdev/kdev_box.py
+          - src/kdev/notebook.py
+          - src/kdev/persistence.py
+          - src/kdev/quota.py
+          - src/kdev/safety.py
+          - src/kdev/session.py
+
+"area: tunnel":
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/kdev/cloudflared.py
+          - src/kdev/sshcfg.py
+          - src/kdev/tunnel.py
+
+"area: kaggle":
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/kdev/api.py
+          - src/kdev/auth.py
+          - src/kdev/config.py
+
+"area: tests":
+  - changed-files:
+      - any-glob-to-any-file:
+          - tests/**
+
+"area: docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - docs/**
+          - CITATION.cff
+      - all-globs-to-any-file: ["*.md", "!CHANGELOG.md"]
+
+"area: website":
+  - changed-files:
+      - any-glob-to-any-file:
+          - website/**
+          - .github/workflows/website.yml
+
+"area: ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**
+          - .pre-commit-config.yaml
+          - .coderabbit.yaml
+          - .gitignore
+          - _typos.toml
+          - .editorconfig
+          - .gitattributes
+
+"area: deps":
+  - changed-files:
+      - any-glob-to-any-file:
+          - pyproject.toml
+          - uv.lock
+          - website/package.json
+          - website/package-lock.json
+
+enhancement:
+  - head-branch: ["^feat/"]
+
+bug:
+  - head-branch: ["^fix/"]
+
+documentation:
+  - head-branch: ["^docs/"]
+
+dependencies:
+  - head-branch: ["^dependabot/", "^deps/"]

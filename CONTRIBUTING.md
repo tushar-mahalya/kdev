@@ -123,6 +123,16 @@ your first pull request with a link, and signing takes one click with your
 GitHub account. It covers all your later pull requests. If the agreement
 itself changes, the bot asks you to sign the new version.
 
+## Labels
+
+Labels are defined in [`.github/labels.yml`](.github/labels.yml). The "Sync
+labels" workflow applies that file when it changes on `main`: it creates and
+updates labels and never deletes one. A second workflow labels each pull
+request from the paths it changes (`area: cli`, `area: box`, `area: website`
+and so on, in [`.github/labeler.yml`](.github/labeler.yml)) and from its branch
+prefix (`feat/`, `fix/`, `docs/`). The labels also sort the notes GitHub
+generates for a release ([`.github/release.yml`](.github/release.yml)).
+
 ## Releasing
 
 For maintainers: bump `version` in `pyproject.toml`, move the `Unreleased`
