@@ -12,18 +12,18 @@
     "check:links": "node scripts/check-links.mjs"
   },
   "dependencies": {
-    "@astrojs/sitemap": "^3.7.5",
+    "@astrojs/sitemap": "^3.7.6",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
     "@fontsource/silkscreen": "^5.3.0",
-    "astro": "^7.4.12"
+    "astro": "^7.4.13"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",
     "@puppeteer/browsers": "^3.2.7",
     "pagefind": "^1.6.0",
-    "typescript": "^5.9.3",
-    "wrangler": "^4.162.0"
+    "typescript": "^7.0.2",
+    "wrangler": "^4.164.0"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
