@@ -40,15 +40,20 @@ uv sync
 uv run pre-commit install        # hooks on commit and commit message, tests on push
 uv run basedpyright              # basic-mode type check, also on every commit
 uv run pytest                    # unit and regression tests, no network needed
-uv run pytest --cov              # the same suite with a local coverage report
+uv run pytest --cov              # the same suite with a coverage report; fails under 71%
 uv run kdev -v …                 # the working tree, with API logging
 ```
 
-Every commit runs formatting, lint, type-checking (`basedpyright`), a secrets scan
-(`detect-secrets`, private-key detection), a spell check (`typos`), config
+Every commit runs formatting, lint, type-checking (`basedpyright`), a secrets
+scan (`detect-secrets`, private-key detection), a spell check (`typos`), config
 validation, a workflow security audit (`zizmor`, `actionlint`) and a lockfile
-check, and its message must be a Conventional Commit; every push runs the tests. CI runs the same hooks, the tests on Python
-3.11–3.13, a build-and-install check, and `gitleaks` over the full history.
+check, and its message must be a Conventional Commit; every push runs the tests.
+
+CI runs the same hooks, the tests on Python 3.11–3.13, the tests again on the
+lowest version of each dependency that `pyproject.toml` allows (if they fail,
+raise that floor), a build-and-install check, and `gitleaks` over the full
+history. The single job `CI passed` is green only when all of those are. Pull
+requests also get a review of the dependencies they add.
 
 ## Trying a change against real Kaggle
 

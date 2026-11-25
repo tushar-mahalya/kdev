@@ -6,6 +6,12 @@ All notable changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- The minimum versions of two dependencies are now the ones kdev works with:
+  typer 0.27.2 (0.27.0 and 0.27.1 crash when a command fails) and questionary 2.1
+  (2.0 fails on every numbered list prompt). CI now runs the tests against the
+  lowest versions the package allows, so the declared floors stay true.
+
 ## [0.2.0] - 2026-11-16
 
 ### Added
