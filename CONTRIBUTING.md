@@ -107,6 +107,34 @@ on-box restore against a temporary directory.
   the [README](README.md), the [website docs](website/src/content/docs/) and,
   for how things work inside, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## AI-assisted contributions
+
+AI tools are welcome here, as long as a person is behind the pull request.
+Agent-assisted work is fine when you direct it, review every line, run the
+tests and can explain every change. [AGENTS.md](AGENTS.md) tells agents how the
+repository works.
+
+- **Fully agentic pull requests are not accepted.** If an agent wrote the code,
+  the tests and the description and no person reviewed them, we may close the
+  pull request without a detailed review.
+- **Agents act through you.** An agent must not open an issue or a pull
+  request, post a comment or mention a maintainer on its own. You do that, and
+  you have read what you post.
+- **Write in your own words.** The description of a pull request, an issue and
+  your replies in review should show what you understand. Answer reviewers'
+  questions yourself.
+- **Say what you used.** The pull request template asks which AI tools you
+  used and for which parts: code, tests, description, something else.
+- **Tests do not come from the code under test.** A bug fix needs a test that
+  fails without the fix. Take the expected values from somewhere independent
+  (Kaggle's documentation, behaviour you saw on a real box, the spec of the
+  tool), not from whatever the code returns today.
+- **Match the code around you.** Leave out comments and long docstrings the
+  surrounding code does not have, and abstractions nobody asked for.
+- **Submit only what you may license.** A model can reproduce code from other
+  projects. Send only what you are allowed to license under the
+  [MIT license](LICENSE) and the [Contributor License Agreement](CLA.md).
+
 ## Automated review
 
 [CodeRabbit](https://coderabbit.ai) reviews every pull request: it posts a

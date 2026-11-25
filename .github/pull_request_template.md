@@ -13,3 +13,6 @@
 - [ ] `uv run pytest` and `uv run pre-commit run --all-files` pass locally
 - [ ] What users will notice is under `## [Unreleased]` in `CHANGELOG.md`
 - [ ] The README is updated if a command or its behaviour changed
+- [ ] Any AI-generated code has been reviewed line by line by me, and I can explain it
+
+AI tools used (if any):
