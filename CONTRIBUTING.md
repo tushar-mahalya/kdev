@@ -166,6 +166,36 @@ and so on, in [`.github/labeler.yml`](.github/labeler.yml)) and from its branch
 prefix (`feat/`, `fix/`, `docs/`). The labels also sort the notes GitHub
 generates for a release ([`.github/release.yml`](.github/release.yml)).
 
+## Repository rulesets
+
+Branch and tag protection is written down in [`.github/rulesets`](.github/rulesets),
+so a change to it is reviewed like any other:
+
+- `main.json`: a change reaches `main` only through a pull request that
+  passes `CI passed` and `license/cla` (the CLA Assistant check), has one
+  approval from a code owner, has every review thread resolved, and is
+  squash-merged, so history stays linear. The branch must be up to date with
+  `main` before it merges. The maintainer can bypass this, for a release or an
+  urgent fix; CI still runs on what is pushed.
+- `main-integrity.json`: nobody, the maintainer included, can force-push to
+  or delete `main`. It has no bypass.
+- `release-tags.json`: `v*` tags cannot be created, moved or deleted, except
+  by the maintainer.
+
+`CI passed` is the last job in `ci.yml`; it needs every other job there. Pull
+requests also run `PR title`, `Dependency review` and the labeler, which are
+not required checks.
+
+The files are not applied by themselves. A maintainer applies a changed one
+with the GitHub CLI, `POST` for a ruleset that does not exist yet and `PUT`
+with its ID to update one (`gh api repos/tushar-mahalya/kdev/rulesets` lists
+the IDs):
+
+```bash
+gh api repos/tushar-mahalya/kdev/rulesets --method POST --input .github/rulesets/main-integrity.json
+gh api repos/tushar-mahalya/kdev/rulesets/<id> --method PUT --input .github/rulesets/main.json
+```
+
 ## Releasing
 
 For maintainers: bump `version` in `pyproject.toml`, move the `Unreleased`
